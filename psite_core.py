@@ -112,7 +112,7 @@ def auth_login_form():
                 else:
                     st.session_state.auth_user = u
                     st.success(f"Welcome back, {u}.")
-                    st.rerun()  # ✅ fixed
+                    st.rerun()
 
     # ---------- Create account ----------
     with tab2:
@@ -136,30 +136,176 @@ def auth_login_form():
                         _write_json(USERS_JSON, users)
                         _ = auth_user_dir(u)
                         st.success("Account created. Please sign in.")
-                        st.rerun()  # ✅ fixed
+                        st.rerun()
 
 
 def auth_logout_button():
     if st.button("Logout", type="secondary"):
         st.session_state.pop("auth_user", None)
-        st.rerun()  # ✅ fixed
+        st.rerun()
 
 
 # ==========================================================
-# TOPIC LIST
+# TOPIC LIST — SCORE-aligned (ordered, canonical)
 # ==========================================================
-FALLBACK_TOPICS: List[str] = [
-    "Fluids/and/Electrolytes", "Nutrition", "Pediatric Anesthesia/and/Pain Management",
-    "Neonatal Physiology/and/Pathophysiology: Transition from Fetal Circulation/Cardiovascular Monitoring/Shock",
-    "Lung Physiology/Pathophysiology/Ventilators/Pneumonia", "ARDS", "Coagulation",
-    "Biliary Atresia", "Hirschsprung Disease", "Wilms Tumor/Renal Cell Carcinoma/and/Hemihypertrophy",
-    "Congenital Diaphragmatic Hernia", "Gastroschisis", "Omphalocele"
-    # (Add all other topics or load dynamically)
-]
+CATEGORY_TO_TOPICS = {
+    "Category 1: Thoracic-Pulmonary-Airway-Chest Wall": [
+        "Bronchoscopy",
+        "Chest Wall Deformities: Pectus Excavatum/Carinatum, Marfan’s and Poland’s Syndromes",
+        "Chylothorax",
+        "Congenital Diaphragmatic Hernia",
+        "Cystic Diseases of the Lung",
+        "Cystic Fibrosis",
+        "Cystic Pulmonary Airway Malformation",
+        "Empyema",
+        "Esophageal Atresia and Tracheoesophageal Fistula",
+        "Esophageal Perforation",
+        "Esophageal Replacement",
+        "Esophageal Stenosis, Webs, Diverticuli",
+        "Esophageal Stricture: Caustic Ingestion and Other Causes",
+        "Esophagoscopy",
+        "Eventration of the Diaphragm",
+        "Gastroesophageal Reflux/Barrett's Esophagus",
+        "Laryngomalacia",
+        "Lobar Emphysema",
+        "Mediastinal Cysts, Masses",
+        "Patent Ductus Arteriosus",
+        "Pneumothorax",
+        "Prenatal Anomalies and Therapy",
+        "Pulmonary Abscess",
+        "Pulmonary Hypoplasia/Hypertension",
+        "Pulmonary Sequestration",
+        "Subacute Bacterial Endocarditis Prophylaxis",
+        "Tracheobronchial Foreign Bodies",
+        "Tracheomalacia",
+        "Vascular Ring and Pulmonary Artery Sling",
+    ],
+    "Category 2: GI-Hepatobiliary-Abdominal Wall-Fetal": [
+        "Abdominal Pain",
+        "Alimentary Tract Duplications",
+        "Appendicitis",
+        "Ascites: Chylous",
+        "Biliary Atresia",
+        "Choledochal Cysts",
+        "Cloacal Exstrophy/Bladder Exstrophy",
+        "Duodenal Atresia/Stenosis/Webs/Annular Pancreas",
+        "Gallbladder Disease, Gallstones",
+        "Gastric Volvulus",
+        "Gastrointestinal Bleeding",
+        "Gastroschisis",
+        "Hepatic Infections: Hepatitis, Abscess, Cysts",
+        "Hirschsprung Disease",
+        "Hypertrophic Pyloric Stenosis",
+        "Inflammatory Bowel Disease",
+        "Inguinal Hernia",
+        "Intestinal Atresia",
+        "Intussusception",
+        "Malrotation",
+        "Meconium Ileus/Peritonitis/Plug",
+        "Mesenteric and Omental Cysts",
+        "Necrotizing Enterocolitis",
+        "Neonatal Gastric Perforation",
+        "Neonatal Obstruction",
+        "Omphalocele",
+        "Omphalomesenteric Duct Remnants, Urachus, and Meckel's",
+        "Peptic Ulcer Disease",
+        "Polyps",
+        "Portal Hypertension",
+        "Umbilical Hernia and Other Umbilical Disorders",
+    ],
+    "Category 3: Head-Neck-Endocrine-Breast-GU-Imperforate Anus-Diagnosis": [
+        "Adrenal Cortical Tumors, Pheochromocytoma",
+        "Anal Pathology: Fissures, Abscesses, Fistulae, Pilonidal, Prolapse",
+        "Anorectal Malformation",
+        "Arterial Diseases and Vasculitis",
+        "Branchial Cleft, Arch Anomalies",
+        "Breast Disorders",
+        "Circumcision and Abnormalities of the Urethra, Penis, Scrotum",
+        "Disorders of Sexual Development",
+        "Endocrine Diseases",
+        "Lymphadenopathy, Atypical Mycobacteria",
+        "Neurological: Shunt Complications, Dermal Sinuses",
+        "Ovarian Torsion, Cysts, and Tumors",
+        "Renal Diseases: Nephrotic Syndrome, DI, Renal Vein Thrombosis, Chronic Failure, Prune Belly Syndrome",
+        "Thyroglossal Duct Cyst/Sinus",
+        "Thyroid Nodules",
+        "Torsions: Appendix Testes, Testicular",
+        "Torticollis",
+        "Undescended Testicle (Cryptorchidism)",
+        "Vaginal Atresia, Hydrometrocolpos",
+        "Vascular Anomalies",
+    ],
+    "Category 4: Trauma-Critical Care-Metabolism-Surgical Emergencies": [
+        "Abdominal Trauma",
+        "Acute Renal Failure",
+        "ARDS",
+        "Burns: Resuscitation, Airway, Electrical, Nutrition, Wound, Sepsis",
+        "Cardiovascular Trauma: Tamponade, Contusion, Arch Disruption, Peripheral Vascular Injuries",
+        "Coagulation",
+        "Extracorporeal Life Support",
+        "Fluids and Electrolytes",
+        "Hematologic Diseases: Spherocytosis, Sickle Cell, ITP, HSP",
+        "Lung Physiology, Pathophysiology, Ventilators, Pneumonia",
+        "Musculoskeletal Trauma: Pelvis, Long Bone",
+        "Neonatal Physiology and Pathophysiology: Transition from Fetal Circulation, Cardiovascular Monitoring, Shock",
+        "Neurosurgical Trauma",
+        "Nonaccidental Injuries: Diagnosis, Evaluation, Legal Issues",
+        "Nutrition",
+        "Obesity",
+        "Pediatric Anesthesia and Pain Management",
+        "Short Bowel Syndrome/Intestinal Failure",
+        "Soft Tissue Trauma: Tetanus, Bites, Wound Infection, Crush Injuries",
+        "Thoracic Trauma",
+        "Transplantation",
+        "Trauma: Initial Assessment and Resuscitation",
+    ],
+    "Category 5: Cancer-Tumors-Spleen": [
+        "Abdominal Mass in the Newborn",
+        "Adrenal Cancer",
+        "Benign Liver Tumors: Hepatic Mesenchymal Hamartoma/Adenoma/FNH",
+        "Bone Tumors: Osteogenic Sarcoma, Ewing Sarcoma",
+        "Chemo/Radiation Therapy, Immunotherapy Concepts, Genetics",
+        "Dermoid/Epidermoid Cysts, Soft Tissue Nodules",
+        "Gastrointestinal Tumors",
+        "Lung and Chest Wall Tumors",
+        "Lymphoma/Leukemia",
+        "Malignant Liver Tumors: Hepatoblastoma/Hepatocellular Carcinoma",
+        "Mesoblastic Nephroma",
+        "Neuroblastoma",
+        "Nevi, Melanoma",
+        "Ovarian and Adnexal Problems",
+        "Rhabdomyosarcoma",
+        "Splenic Diseases",
+        "Teratoma",
+        "Testicular Tumors",
+        "Wilms Tumor, Renal Cell Carcinoma, and Hemihypertrophy",
+    ],
+}
 
+# Flat, ordered list used by existing UI (cards/progress)
+FALLBACK_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
 
 def get_topics() -> List[str]:
+    """Return the canonical, ordered flat list of topics for cards, chips, and progress."""
     return FALLBACK_TOPICS
+
+def get_category_map() -> dict:
+    """Optional: returns the ordered category→topics mapping for grouped rendering."""
+    return CATEGORY_TO_TOPICS
+
+# Optional: normalize incoming subjects to canonical topic names (for .md variations).
+NORMALIZE_ALIASES = {
+    "gallbladder disease/gallstones": "Gallbladder Disease, Gallstones",
+    "ovarian and adrexal problems": "Ovarian and Adnexal Problems",
+    "vascular ring & pulmonary artery sling": "Vascular Ring and Pulmonary Artery Sling",
+    "mediastinal cysts/masses": "Mediastinal Cysts, Masses",
+    "esophageal atresia/tracheoesophageal fistula": "Esophageal Atresia and Tracheoesophageal Fistula",
+    "fluids & electrolytes": "Fluids and Electrolytes",
+    "lung physiology/pathophysiology/ventilators/pneumonia": "Lung Physiology, Pathophysiology, Ventilators, Pneumonia",
+}
+def normalize_subject(s: str) -> str:
+    key = (s or "").strip().lower()
+    return NORMALIZE_ALIASES.get(key, s)
 
 
 # ==========================================================
@@ -168,7 +314,6 @@ def get_topics() -> List[str]:
 FRONTMATTER_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.MULTILINE)
 EXPL_SPLIT_RE = re.compile(r"<!--\s*EXPLANATION\s*-->", re.IGNORECASE)
 REQUIRED_COLS = ["id", "subject", "stem", "A", "B", "C", "D", "E", "correct", "explanation"]
-
 
 def parse_front_matter(text: str) -> Tuple[Dict, str]:
     m = FRONTMATTER_RE.match(text)
@@ -182,13 +327,11 @@ def parse_front_matter(text: str) -> Tuple[Dict, str]:
             meta[k.strip()] = v.strip()
     return meta, body.strip()
 
-
 def split_stem_explanation(body: str) -> Tuple[str, str]:
     parts = EXPL_SPLIT_RE.split(body, maxsplit=1)
     if len(parts) == 2:
         return parts[0].strip(), parts[1].strip()
     return body.strip(), ""
-
 
 def load_questions_frame() -> pd.DataFrame:
     files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "*.md")))
@@ -199,9 +342,10 @@ def load_questions_frame() -> pd.DataFrame:
                 raw = h.read()
             meta, body = parse_front_matter(raw)
             stem, explanation = split_stem_explanation(body)
+            subj = normalize_subject(meta.get("subject", "").strip())
             rec = {
                 "id": meta.get("id", "").strip(),
-                "subject": meta.get("subject", "").strip(),
+                "subject": subj,
                 "A": meta.get("A", "").strip(),
                 "B": meta.get("B", "").strip(),
                 "C": meta.get("C", "").strip(),
@@ -224,9 +368,10 @@ def load_questions_frame() -> pd.DataFrame:
             df[c] = ""
         df[c] = df[c].astype(str).str.strip()
     df["correct"] = df["correct"].str.upper()
+    # Keep only questions whose subjects map to canonical topics (optional strictness)
+    df = df[df["subject"].isin(get_topics())].copy()
     df = df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
     return df
-
 
 def load_questions_for_subjects(subjects: List[str]) -> pd.DataFrame:
     if not subjects:
@@ -242,7 +387,6 @@ def load_questions_for_subjects(subjects: List[str]) -> pd.DataFrame:
 # ==========================================================
 def slugify(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()[:100]
-
 
 def resolve_review_path(topic: str) -> Optional[str]:
     slug = slugify(topic)
@@ -265,30 +409,32 @@ def _user_file(pathkey: str) -> str:
         raise RuntimeError("Not authenticated.")
     return _user_paths(u)[pathkey]
 
-
 def load_progress() -> Dict[str, Dict]:
     topics = get_topics()
     data = _read_json(_user_file("progress"), {})
     for t in topics:
         data.setdefault(t, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
+    # Drop any stray topics that are no longer canonical
+    for k in list(data.keys()):
+        if k not in topics:
+            data.pop(k, None)
     return data
-
 
 def save_progress(d: Dict[str, Dict]):
     _write_json(_user_file("progress"), d)
 
-
 def load_history() -> List[Dict]:
     return _read_json(_user_file("history"), [])
-
 
 def save_history(arr: List[Dict]):
     _write_json(_user_file("history"), arr)
 
-
 def update_topic_stats(topic: str, correct: bool):
     prog = load_progress()
-    rec = prog.setdefault(topic, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
+    if topic not in prog:
+        # Guard if old question subjects slip through
+        prog[topic] = {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False}
+    rec = prog[topic]
     rec["total"] += 1
     rec["correct"] += 1 if correct else 0
     rec["last_seen"] = int(time.time())
@@ -296,12 +442,10 @@ def update_topic_stats(topic: str, correct: bool):
         rec["mastered"] = True
     save_progress(prog)
 
-
 def topic_accuracy(topic: str) -> float:
     prog = load_progress().get(topic, {})
     c, t = prog.get("correct", 0), prog.get("total", 0)
     return (c / t) if t else 0.0
-
 
 def suggested_topics(k: int = 6) -> List[Tuple[str, float]]:
     data = load_progress()
@@ -321,21 +465,17 @@ def _now_day_ts() -> int:
     today = dt.date.today()
     return int(time.mktime(dt.datetime(today.year, today.month, today.day).timetuple()))
 
-
 def load_sr() -> Dict[str, Dict]:
     return _read_json(_user_file("sr"), {})
 
-
 def save_sr(srobj: Dict[str, Dict]):
     _write_json(_user_file("sr"), srobj)
-
 
 def _init_sr_if_needed(qid: str):
     sr = load_sr()
     if qid not in sr:
         sr[qid] = {"reps": 0, "interval": 0.0, "ease": 2.5, "due_ts": _now_day_ts(), "last_result": None}
         save_sr(sr)
-
 
 def sr_due_ids(limit: int = 20, subjects: Optional[List[str]] = None) -> List[str]:
     df = load_questions_for_subjects(subjects or [])
@@ -350,14 +490,14 @@ def sr_due_ids(limit: int = 20, subjects: Optional[List[str]] = None) -> List[st
         due_ts = d["due_ts"] if d else today
         if due_ts <= today:
             ids.append(qid)
+    # If nothing due, show next-upcoming few
     if not ids:
         upcoming = sorted(
             ((q, sr.get(q, {"due_ts": today})["due_ts"]) for q in df["id"].tolist()),
-            key=lambda x: x[1],
+            key=lambda x: x[1]
         )
         ids = [q for q, _ in upcoming[:limit]]
     return ids[:limit]
-
 
 def sr_update(qid: str, was_correct: bool):
     _init_sr_if_needed(qid)
