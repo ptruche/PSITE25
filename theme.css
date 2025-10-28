@@ -44,3 +44,8 @@ html, body { height:auto !important; overflow-y:auto !important; }
 .explain-scope tr:nth-child(even) { background:#f9fafb; }
 
 header { visibility: hidden; height: 0 !important; }
+
+/* Ensure main content never hides under header */
+.block-container { padding-top: calc(var(--header-h) + 14px) !important; }
+header { visibility: hidden; height: 0 !important; }
+
