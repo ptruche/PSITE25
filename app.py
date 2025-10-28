@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from psite_core import (
-    apply_base_theme, ensure_session_keys, try_auto_login_from_cookie,
+    apply_base_theme, ensure_session_keys, try_auto_login_persisted,
     auth_is_authed, auth_login_form, auth_logout_button,
     get_category_map, resolve_review_path, load_questions_for_subjects,
     load_questions_frame, update_topic_stats, sr_due_ids, sr_update
@@ -10,7 +10,7 @@ from psite_core import (
 st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide")
 apply_base_theme()
 ensure_session_keys()
-try_auto_login_from_cookie()   # <-- restore from cookie on each load
+try_auto_login_persisted()   # <-- restore from cookie or URL token
 
 # ---------- Fixed header (prevents clipping; logout lives here) ----------
 st.markdown("""
@@ -25,7 +25,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Mount logout button on the right side of header
 right_anchor = st.columns([1,8,1])[0]
 with right_anchor:
     if auth_is_authed():
@@ -68,7 +67,7 @@ with st.sidebar:
             ids = sr_due_ids(limit=50, subjects=None)
             df_all = load_questions_frame()
             pool = df_all[df_all["id"].isin(ids)].reset_index(drop=True) if not df_all.empty else df_all
-        else:  # weakest (simple: random until per-topic weakness model added)
+        else:
             df_all = load_questions_frame()
             pool = df_all.sample(n=min(len(df_all), int(num)), random_state=42).reset_index(drop=True) if not df_all.empty else df_all
 
@@ -80,7 +79,7 @@ with st.sidebar:
         st.session_state.view = "quiz"
         st.rerun()
 
-# ---------- Main area: view = topics | review | quiz ----------
+# ---------- Main area ----------
 def render_review(topic: str):
     st.markdown(f"### {topic}")
     p = resolve_review_path(topic)
@@ -161,7 +160,7 @@ def render_quiz():
         revealed_n = sum(1 for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed)
         st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
 
-# Decide which view to show
+# View switch
 view = st.session_state.get("view", "topics")
 if view == "review":
     back, _ = st.columns([1,8])
