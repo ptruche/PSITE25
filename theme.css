@@ -49,5 +49,5 @@ html, body { height:auto !important; overflow-y:auto !important; }
 .explain-scope thead th { background:#1d4ed8; color:white; border-color:#1d4ed8; }
 .explain-scope tr:nth-child(even) { background:#f9fafb; }
 
-/* Make Streamlit's own top toolbar not overlap anything */
+/* Hide Streamlit's own top toolbar so it can't overlap */
 header { visibility: hidden; height: 0 !important; }
