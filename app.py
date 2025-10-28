@@ -1,15 +1,16 @@
 import streamlit as st
 import pandas as pd
 from psite_core import (
-    apply_base_theme, ensure_session_keys, auth_is_authed, auth_login_form, auth_logout_button,
-    get_category_map, get_topics, resolve_review_path,
-    load_questions_for_subjects, load_questions_frame,
-    update_topic_stats, sr_due_ids, sr_update
+    apply_base_theme, ensure_session_keys, try_auto_login_from_cookie,
+    auth_is_authed, auth_login_form, auth_logout_button,
+    get_category_map, resolve_review_path, load_questions_for_subjects,
+    load_questions_frame, update_topic_stats, sr_due_ids, sr_update
 )
 
 st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide")
 apply_base_theme()
 ensure_session_keys()
+try_auto_login_from_cookie()   # <-- restore from cookie on each load
 
 # ---------- Fixed header (prevents clipping; logout lives here) ----------
 st.markdown("""
@@ -24,9 +25,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Place logout button into the header’s right side
-logout_col = st.columns([1,8,1])[0]  # invisible anchor: we only need space to mount the button
-with logout_col:
+# Mount logout button on the right side of header
+right_anchor = st.columns([1,8,1])[0]
+with right_anchor:
     if auth_is_authed():
         auth_logout_button()
 
@@ -41,14 +42,12 @@ if not auth_is_authed():
 with st.sidebar:
     st.markdown("### Topics")
     cats = get_category_map()
-    # Chips view: 3 columns, ordered by your categories
     chip_cols = st.columns(3)
     i = 0
     for cat, topics in cats.items():
         st.caption(cat)
         for t in topics:
             with chip_cols[i % 3]:
-                active = (st.session_state.active_topic == t and st.session_state.view == "review")
                 if st.button(t, key=f"chip_{t}", use_container_width=True):
                     st.session_state.active_topic = t
                     st.session_state.view = "review"
@@ -59,19 +58,17 @@ with st.sidebar:
     st.markdown("### Start a Quiz")
     mode = st.radio("Mode", ["normal","spaced","weakest"], horizontal=True, label_visibility="collapsed")
     st.session_state.quiz_mode = mode
-    num = st.number_input("Number of questions (normal/weakest)", 5, 50, 20, step=5, help="Ignored for spaced repetition (due items are used).")
+    num = st.number_input("Number of questions (normal/weakest)", 5, 50, 20, step=5, help="Ignored for spaced repetition.")
     if st.button("Start ▶", use_container_width=True):
-        # Build pool here to avoid losing state on main render
         if mode == "normal":
-            # if a topic is selected for review, prefer that topic; else all
             subjects = [st.session_state.active_topic] if st.session_state.get("active_topic") else []
             df = load_questions_for_subjects(subjects) if subjects else load_questions_frame()
             pool = df.sample(n=min(len(df), int(num)), random_state=42).reset_index(drop=True) if not df.empty else df
         elif mode == "spaced":
-            due_ids = sr_due_ids(limit=50, subjects=None)
+            ids = sr_due_ids(limit=50, subjects=None)
             df_all = load_questions_frame()
-            pool = df_all[df_all["id"].isin(due_ids)].reset_index(drop=True) if not df_all.empty else df_all
-        else:  # weakest
+            pool = df_all[df_all["id"].isin(ids)].reset_index(drop=True) if not df_all.empty else df_all
+        else:  # weakest (simple: random until per-topic weakness model added)
             df_all = load_questions_frame()
             pool = df_all.sample(n=min(len(df_all), int(num)), random_state=42).reset_index(drop=True) if not df_all.empty else df_all
 
@@ -92,7 +89,6 @@ def render_review(topic: str):
         return
     with open(p, "r", encoding="utf-8") as f:
         txt = f.read()
-    # Render raw markdown (with our CSS taking care of tables etc.)
     st.markdown(f"<div class='explain-scope'>{txt}</div>", unsafe_allow_html=True)
 
 def render_topics_grid():
@@ -116,7 +112,7 @@ def render_quiz():
         if st.session_state.get("quiz_mode") == "spaced":
             st.success("✅ No SR items due right now.")
         else:
-            st.info("No questions found. Add `.md` questions to `data/questions/`.")
+            st.info("No questions found. Add `.md` files to `data/questions/`.")
         return
 
     i = st.session_state.get("quiz_idx", 0)
@@ -151,7 +147,6 @@ def render_quiz():
         st.markdown(f"<span class='verdict {'verdict-ok' if is_correct else 'verdict-err'}'>{'Correct' if is_correct else 'Incorrect'}</span>", unsafe_allow_html=True)
         if row["explanation"].strip():
             st.markdown(row["explanation"], unsafe_allow_html=True)
-        # Bookkeeping once
         if not st.session_state.get(f"scored_{row['id']}", False):
             update_topic_stats(row.get("subject",""), is_correct)
             if st.session_state.get("quiz_mode") == "spaced":
@@ -159,16 +154,17 @@ def render_quiz():
             st.session_state[f"scored_{row['id']}"] = True
 
     if st.session_state.quiz_finished:
-        correct_n = sum(1 for qid, ans in st.session_state.quiz_answers.items()
-                        if pool.set_index("id").loc[qid]["correct"] == ans and qid in st.session_state.quiz_revealed)
+        correct_n = sum(
+            1 for qid, ans in st.session_state.quiz_answers.items()
+            if pool.set_index("id").loc[qid]["correct"] == ans and qid in st.session_state.quiz_revealed
+        )
         revealed_n = sum(1 for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed)
         st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
 
 # Decide which view to show
 view = st.session_state.get("view", "topics")
 if view == "review":
-    # Back to all topics button
-    back, title = st.columns([1,8])
+    back, _ = st.columns([1,8])
     with back:
         if st.button("← All Topics", type="secondary"):
             st.session_state.view = "topics"; st.rerun()
