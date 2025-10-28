@@ -1,5 +1,54 @@
+# app.py
+import os, sys, traceback
 import streamlit as st
-import pandas as pd
+
+st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide")
+
+# --- Ensure project root is importable ---
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+
+# --- HARDENED IMPORT of psite_core with debug panel on failure ---
+core = None
+_import_error = None
+try:
+    import psite_core as core
+except Exception as e1:
+    _import_error = e1
+    # Try package-style import if deployed in a package folder (e.g., src layout)
+    try:
+        import importlib
+        core = importlib.import_module("psite25.psite_core")  # adjust if your repo/package name differs
+    except Exception as e2:
+        _import_error = e2
+
+if core is None:
+    st.error("Failed to import `psite_core`. Showing diagnostics below so we can fix fast.")
+    st.code("".join(traceback.format_exception(type(_import_error), _import_error, _import_error.__traceback__)))
+    # Show where Python looked
+    st.subheader("sys.path")
+    st.code("\n".join(sys.path))
+    # Show files next to app.py
+    st.subheader("Files in app directory")
+    try:
+        listing = "\n".join(sorted(os.listdir(APP_DIR)))
+    except Exception as _ls_err:
+        listing = f"(error listing dir) {str(_ls_err)}"
+    st.code(listing)
+    # If there's a pages/ folder, show it (leftover multipage can render old sidebar)
+    pages_dir = os.path.join(APP_DIR, "pages")
+    if os.path.isdir(pages_dir):
+        st.subheader("Files in pages/ (these can override UI)")
+        try:
+            listing_pages = "\n".join(sorted(os.listdir(pages_dir)))
+        except Exception as _ls_err:
+            listing_pages = f"(error listing dir) {str(_ls_err)}"
+        st.code(listing_pages)
+        st.info("If you see old files in `pages/`, temporarily rename or remove them to prevent the old sidebar/UI from rendering.")
+    st.stop()
+
+# --- If we get here, the import worked; render using core ---
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
     auth_is_authed, auth_login_form, auth_logout_button,
@@ -7,12 +56,11 @@ from psite_core import (
     load_questions_frame, update_topic_stats, sr_due_ids, sr_update
 )
 
-st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide")
 apply_base_theme()
 ensure_session_keys()
-try_auto_login_persisted()   # <-- restore from cookie or URL token
+try_auto_login_persisted()
 
-# ---------- Fixed header (prevents clipping; logout lives here) ----------
+# Fixed header
 st.markdown("""
 <div class="app-header">
   <div class="app-header-inner">
@@ -30,14 +78,14 @@ with right_anchor:
     if auth_is_authed():
         auth_logout_button()
 
-# ---------- Login gate ----------
+# Login gate
 if not auth_is_authed():
     st.markdown("#### Welcome")
     st.caption("Sign in to access topics, reviews, and quizzes.")
     auth_login_form()
     st.stop()
 
-# ---------- Sidebar: Topics & Quiz launcher ----------
+# Sidebar: Topics + Quiz
 with st.sidebar:
     st.markdown("### Topics")
     cats = get_category_map()
@@ -79,7 +127,6 @@ with st.sidebar:
         st.session_state.view = "quiz"
         st.rerun()
 
-# ---------- Main area ----------
 def render_review(topic: str):
     st.markdown(f"### {topic}")
     p = resolve_review_path(topic)
@@ -106,6 +153,7 @@ def render_topics_grid():
             i += 1
 
 def render_quiz():
+    import pandas as pd
     pool: pd.DataFrame = st.session_state.get("quiz_pool")
     if pool is None or pool.empty:
         if st.session_state.get("quiz_mode") == "spaced":
@@ -160,7 +208,6 @@ def render_quiz():
         revealed_n = sum(1 for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed)
         st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
 
-# View switch
 view = st.session_state.get("view", "topics")
 if view == "review":
     back, _ = st.columns([1,8])
