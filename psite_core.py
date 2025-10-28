@@ -1,9 +1,11 @@
+# psite_core.py
 import os, re, glob, json, time, secrets, base64, hashlib, hmac, datetime as dt
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
-# Try cookie manager; fall back safely if missing
+# Optional cookie manager; we also implement a localStorage fallback
 COOKIE_AVAILABLE = True
 try:
     from streamlit_cookies_manager import EncryptedCookieManager  # pip: streamlit-cookies-manager
@@ -11,30 +13,43 @@ except Exception:
     COOKIE_AVAILABLE = False
 
 # ==========================================================
-# PATHS & INITIALIZATION
+# PATHS & INIT
 # ==========================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR   = os.path.join(BASE_DIR, "data")
 QUESTIONS_DIR = os.path.join(DATA_DIR, "questions")
-REVIEWS_DIR = os.path.join(DATA_DIR, "reviews")
-STATE_DIR = os.path.join(DATA_DIR, "state")
+REVIEWS_DIR   = os.path.join(DATA_DIR, "reviews")
+STATE_DIR  = os.path.join(DATA_DIR, "state")
 USERS_JSON = os.path.join(STATE_DIR, "users.json")
-SECRET_FILE = os.path.join(STATE_DIR, "secret.key")    # for HMAC signing and cookie encryption
-THEME_CSS = os.path.join(BASE_DIR, "theme.css")
+SECRET_FILE= os.path.join(STATE_DIR, "secret.key")
+THEME_CSS  = os.path.join(BASE_DIR, "theme.css")
 
 for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR]:
     os.makedirs(p, exist_ok=True)
 
 # ==========================================================
-# STYLING
+# THEME
 # ==========================================================
 def apply_base_theme():
     if os.path.exists(THEME_CSS):
         with open(THEME_CSS, "r", encoding="utf-8") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    # Keep the sidebar arrow visible & expanded by default
+    st.markdown("""
+    <style>
+      [data-testid="stSidebar"] { min-width: 320px !important; width: 320px !important; }
+      [data-testid="stSidebarNav"] { display: none !important; } /* legacy multipage nav */
+      button.sidebar-opener {
+        position: fixed; left: 10px; bottom: 14px; z-index: 9999;
+        border-radius: 999px; padding: .5rem .75rem; border: 1px solid #e5e7eb;
+        background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.05);
+        cursor: pointer; font-size: .9rem;
+      }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ==========================================================
-# JSON HELPERS
+# JSON I/O
 # ==========================================================
 def _read_json(path, default):
     if os.path.exists(path):
@@ -51,10 +66,9 @@ def _write_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # ==========================================================
-# SECRET + TOKEN SIGNING
+# SECRET & TOKEN
 # ==========================================================
 def _get_app_secret() -> bytes:
-    """Stable secret across restarts for HMAC and (when available) cookie encryption."""
     if os.path.exists(SECRET_FILE):
         with open(SECRET_FILE, "rb") as f:
             return f.read()
@@ -76,66 +90,31 @@ def _sign(payload_b64: str) -> str:
     return _b64url_encode(sig)
 
 def issue_auth_token(username: str, days_valid: int = 7) -> str:
-    payload = {"u": username, "exp": int(time.time()) + days_valid * 86400}
-    payload_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
+    payload = {"u": username, "exp": int(time.time()) + days_valid*86400}
+    payload_b64 = _b64url_encode(json.dumps(payload, separators=(",",":")).encode())
     sig = _sign(payload_b64)
     return f"{payload_b64}.{sig}"
 
 def verify_auth_token(token: str) -> Optional[str]:
-    if not token or "." not in token:
-        return None
+    if not token or "." not in token: return None
     payload_b64, sig = token.split(".", 1)
-    if not hmac.compare_digest(_sign(payload_b64), sig):
-        return None
+    if not hmac.compare_digest(_sign(payload_b64), sig): return None
     try:
         payload = json.loads(_b64url_decode(payload_b64))
     except Exception:
         return None
-    if int(payload.get("exp", 0)) < int(time.time()):
-        return None
+    if int(payload.get("exp", 0)) < int(time.time()): return None
     return payload.get("u")
 
 # ==========================================================
-# URL PARAM HELPERS (fallback persistence)
-# ==========================================================
-def _get_query_params() -> dict:
-    try:
-        return dict(st.query_params)
-    except Exception:
-        return {k: v[0] if isinstance(v, list) and v else v for k, v in st.experimental_get_query_params().items()}
-
-def _set_query_params(**kwargs):
-    try:
-        qp = dict(st.query_params)
-        for k, v in kwargs.items():
-            if v is None and k in qp:
-                qp.pop(k, None)
-            elif v is not None:
-                qp[k] = v
-        st.query_params.clear()
-        for k, v in qp.items():
-            st.query_params[k] = v
-    except Exception:
-        base = st.experimental_get_query_params()
-        for k, v in kwargs.items():
-            if v is None:
-                base.pop(k, None)
-            else:
-                base[k] = v
-        st.experimental_set_query_params(**base)
-
-# ==========================================================
-# COOKIES (if available) OR SAFE FALLBACK
+# COOKIES + URL + localStorage BRIDGE (robust persistence)
 # ==========================================================
 def _cookies():
-    """Return an object with dict-like get/set/save API. Falls back if lib missing."""
     if COOKIE_AVAILABLE:
         cm = EncryptedCookieManager(prefix="psite_", password=_get_app_secret().hex())
         if not cm.ready():
-            # Streamlit needs a rerun to initialize cookies
             st.stop()
         return cm
-    # Fallback shim using session_state only (not persistent across browser restarts)
     class _Shim:
         def __getitem__(self, k): return st.session_state.get(f"_cookie_{k}", "")
         def __setitem__(self, k, v): st.session_state[f"_cookie_{k}"] = v
@@ -143,8 +122,112 @@ def _cookies():
         def save(self): pass
     return _Shim()
 
+def _get_query_params() -> dict:
+    try:
+        return dict(st.query_params)
+    except Exception:
+        return {k: (v[0] if isinstance(v, list) and v else v) for k, v in st.experimental_get_query_params().items()}
+
+def _set_query_params(**kwargs):
+    try:
+        qp = dict(st.query_params)
+        for k, v in kwargs.items():
+            if v is None: qp.pop(k, None)
+            else: qp[k] = v
+        st.query_params.clear()
+        for k, v in qp.items():
+            st.query_params[k] = v
+    except Exception:
+        base = st.experimental_get_query_params()
+        for k, v in kwargs.items():
+            if v is None: base.pop(k, None)
+            else: base[k] = v
+        st.experimental_set_query_params(**base)
+
+# JS: write/read token in localStorage and reflect into URL (?t=...)
+def _js_set_token(token: str):
+    components.html(f"""
+    <script>
+      try {{
+        localStorage.setItem('psite_token', {json.dumps(token)});
+        const url = new URL(window.location);
+        url.searchParams.set('t', {json.dumps(token)});
+        window.history.replaceState(null, '', url.toString());
+        window.parent.postMessage({{streamlitRerun:true}}, "*");
+      }} catch (e) {{}}
+    </script>
+    """, height=0)
+
+def _js_restore_token_if_missing():
+    components.html("""
+    <script>
+      try {
+        const url = new URL(window.location);
+        const hasT = url.searchParams.get('t');
+        const saved = localStorage.getItem('psite_token');
+        if (!hasT && saved) {
+          url.searchParams.set('t', saved);
+          window.history.replaceState(null, '', url.toString());
+          window.parent.postMessage({streamlitRerun:true}, "*");
+        }
+      } catch (e) {}
+    </script>
+    """, height=0)
+
+def persist_login(username: str, remember_days: int = 7):
+    st.session_state.auth_user = username
+    token = issue_auth_token(username, remember_days)
+    # Cookie (if available)
+    try:
+        cm = _cookies()
+        cm["auth"] = token
+        cm.save()
+    except Exception:
+        pass
+    # URL param + localStorage (robust on refresh)
+    _set_query_params(t=token)
+    _js_set_token(token)
+
+def clear_persisted_login():
+    st.session_state.pop("auth_user", None)
+    try:
+        cm = _cookies(); cm["auth"] = ""; cm.save()
+    except Exception:
+        pass
+    _set_query_params(t=None)
+    components.html("""
+    <script>
+      try { localStorage.removeItem('psite_token'); } catch(e) {}
+      try {
+        const url = new URL(window.location);
+        url.searchParams.delete('t');
+        window.history.replaceState(null, '', url.toString());
+      } catch(e){}
+    </script>
+    """, height=0)
+
+def try_auto_login_persisted():
+    if st.session_state.get("auth_user"):
+        return
+    # localStorage → URL (if needed)
+    _js_restore_token_if_missing()
+    # Cookie
+    try:
+        cm = _cookies(); token = cm.get("auth")
+        user = verify_auth_token(token) if token else None
+        if user:
+            st.session_state.auth_user = user
+            return
+    except Exception:
+        pass
+    # URL
+    token = _get_query_params().get("t")
+    user = verify_auth_token(token) if token else None
+    if user:
+        st.session_state.auth_user = user
+
 # ==========================================================
-# AUTH
+# AUTH (local PBKDF2)
 # ==========================================================
 def _hash_pw(password: str, salt_b64: Optional[str] = None) -> Tuple[str, str]:
     salt = base64.b64decode(salt_b64) if salt_b64 else secrets.token_bytes(16)
@@ -171,53 +254,11 @@ def _user_paths(username: str) -> Dict[str, str]:
         "sr":       os.path.join(base, "sr.json"),
     }
 
-def persist_login(username: str, remember_days: int = 7):
-    """Persist via cookie if available; else via URL param; else session-only."""
-    st.session_state.auth_user = username
-    token = issue_auth_token(username, remember_days)
-    try:
-        cm = _cookies()
-        cm["auth"] = token
-        cm.save()
-    except Exception:
-        # no cookie path → degrade to URL token
-        _set_query_params(t=token)
-
-def clear_persisted_login():
-    st.session_state.pop("auth_user", None)
-    try:
-        cm = _cookies()
-        cm["auth"] = ""
-        cm.save()
-    except Exception:
-        _set_query_params(t=None)
-
-def try_auto_login_persisted():
-    """Restore login from cookie if available, else from URL token."""
-    if st.session_state.get("auth_user"):
-        return
-    # Try cookie
-    try:
-        cm = _cookies()
-        token = cm.get("auth")
-        user = verify_auth_token(token) if token else None
-        if user:
-            st.session_state.auth_user = user
-            return
-    except Exception:
-        pass
-    # Try URL
-    token = _get_query_params().get("t")
-    user = verify_auth_token(token) if token else None
-    if user:
-        st.session_state.auth_user = user
-
 def auth_login_form():
     st.markdown("<div class='psite-card'><b>Login</b></div>", unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["Sign in", "Create account"])
-
     with tab1:
-        with st.form("login_form", clear_on_submit=False):
+        with st.form("login_form"):
             u = st.text_input("Username")
             p = st.text_input("Password", type="password")
             remember = st.checkbox("Remember me", value=True)
@@ -229,9 +270,8 @@ def auth_login_form():
                 else:
                     persist_login(u, remember_days=(7 if remember else 1))
                     st.rerun()
-
     with tab2:
-        with st.form("create_form", clear_on_submit=False):
+        with st.form("create_form"):
             u = st.text_input("New username")
             p1 = st.text_input("Password", type="password")
             p2 = st.text_input("Confirm password", type="password")
@@ -258,39 +298,23 @@ def auth_logout_button():
         st.rerun()
 
 # ==========================================================
-# TOPICS
+# SCORE TOPICS
 # ==========================================================
 CATEGORY_TO_TOPICS = {
     "Category 1: Thoracic-Pulmonary-Airway-Chest Wall": [
         "Bronchoscopy",
         "Chest Wall Deformities: Pectus Excavatum/Carinatum, Marfan’s and Poland’s Syndromes",
-        "Chylothorax",
-        "Congenital Diaphragmatic Hernia",
-        "Cystic Diseases of the Lung",
-        "Cystic Fibrosis",
-        "Cystic Pulmonary Airway Malformation",
-        "Empyema",
-        "Esophageal Atresia and Tracheoesophageal Fistula",
-        "Esophageal Perforation",
-        "Esophageal Replacement",
-        "Esophageal Stenosis, Webs, Diverticuli",
-        "Esophageal Stricture: Caustic Ingestion and Other Causes",
-        "Esophagoscopy",
-        "Eventration of the Diaphragm",
-        "Gastroesophageal Reflux/Barrett's Esophagus",
-        "Laryngomalacia",
-        "Lobar Emphysema",
-        "Mediastinal Cysts, Masses",
-        "Patent Ductus Arteriosus",
-        "Pneumothorax",
-        "Prenatal Anomalies and Therapy",
-        "Pulmonary Abscess",
-        "Pulmonary Hypoplasia/Hypertension",
-        "Pulmonary Sequestration",
-        "Subacute Bacterial Endocarditis Prophylaxis",
-        "Tracheobronchial Foreign Bodies",
-        "Tracheomalacia",
-        "Vascular Ring and Pulmonary Artery Sling",
+        "Chylothorax","Congenital Diaphragmatic Hernia","Cystic Diseases of the Lung",
+        "Cystic Fibrosis","Cystic Pulmonary Airway Malformation","Empyema",
+        "Esophageal Atresia and Tracheoesophageal Fistula","Esophageal Perforation",
+        "Esophageal Replacement","Esophageal Stenosis, Webs, Diverticuli",
+        "Esophageal Stricture: Caustic Ingestion and Other Causes","Esophagoscopy",
+        "Eventration of the Diaphragm","Gastroesophageal Reflux/Barrett's Esophagus",
+        "Laryngomalacia","Lobar Emphysema","Mediastinal Cysts, Masses","Patent Ductus Arteriosus",
+        "Pneumothorax","Prenatal Anomalies and Therapy","Pulmonary Abscess",
+        "Pulmonary Hypoplasia/Hypertension","Pulmonary Sequestration",
+        "Subacute Bacterial Endocarditis Prophylaxis","Tracheobronchial Foreign Bodies",
+        "Tracheomalacia","Vascular Ring and Pulmonary Artery Sling",
     ],
     "Category 2: GI-Hepatobiliary-Abdominal Wall-Fetal": [
         "Abdominal Pain","Alimentary Tract Duplications","Appendicitis","Ascites: Chylous",
@@ -346,15 +370,6 @@ FALLBACK_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in 
 def get_topics() -> List[str]: return FALLBACK_TOPICS
 def get_category_map() -> dict: return CATEGORY_TO_TOPICS
 
-NORMALIZE_ALIASES = {
-    "gallbladder disease/gallstones": "Gallbladder Disease, Gallstones",
-    "ovarian and adrexal problems": "Ovarian and Adnexal Problems",
-    "esophageal atresia/tracheoesophageal fistula": "Esophageal Atresia and Tracheoesophageal Fistula",
-}
-def normalize_subject(s: str) -> str:
-    key = (s or "").strip().lower()
-    return NORMALIZE_ALIASES.get(key, s)
-
 # ==========================================================
 # QUESTIONS & REVIEWS
 # ==========================================================
@@ -386,18 +401,16 @@ def load_questions_frame() -> pd.DataFrame:
                 raw = h.read()
             meta, body = parse_front_matter(raw)
             stem, explanation = split_stem_explanation(body)
-            subj = normalize_subject(meta.get("subject", "").strip())
             rec = {
                 "id": meta.get("id","").strip(),
-                "subject": subj,
+                "subject": meta.get("subject","").strip(),
                 "A": meta.get("A","").strip(),
                 "B": meta.get("B","").strip(),
                 "C": meta.get("C","").strip(),
                 "D": meta.get("D","").strip(),
                 "E": meta.get("E","").strip(),
                 "correct": meta.get("correct","").strip().upper(),
-                "stem": stem,
-                "explanation": explanation,
+                "stem": stem, "explanation": explanation,
             }
             if rec["id"] and rec["subject"] and rec["correct"]:
                 rows.append(rec)
@@ -437,7 +450,8 @@ def resolve_review_path(topic: str) -> Optional[str]:
 def _user_file(pathkey: str) -> str:
     u = st.session_state.get("auth_user")
     if not u: raise RuntimeError("Not authenticated.")
-    base = auth_user_dir(u)
+    base = os.path.join(STATE_DIR, "users", re.sub(r"[^A-Za-z0-9_.-]+", "_", u))
+    os.makedirs(base, exist_ok=True)
     paths = {
         "progress": os.path.join(base, "progress.json"),
         "history":  os.path.join(base, "history.json"),
@@ -451,8 +465,7 @@ def load_progress() -> Dict[str, Dict]:
     for t in topics:
         data.setdefault(t, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
     for k in list(data.keys()):
-        if k not in topics:
-            data.pop(k, None)
+        if k not in topics: data.pop(k, None)
     return data
 
 def save_progress(d: Dict[str, Dict]): _write_json(_user_file("progress"), d)
@@ -461,9 +474,7 @@ def save_history(arr: List[Dict]): _write_json(_user_file("history"), arr)
 
 def update_topic_stats(topic: str, correct: bool):
     prog = load_progress()
-    if topic not in prog:
-        prog[topic] = {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False}
-    rec = prog[topic]
+    rec = prog.setdefault(topic, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
     rec["total"] += 1
     rec["correct"] += 1 if correct else 0
     rec["last_seen"] = int(time.time())
@@ -486,7 +497,7 @@ def suggested_topics(k:int=6) -> List[Tuple[str,float]]:
     return [(t,a) for (t,a,_) in tried+untried]
 
 # ==========================================================
-# SPACED REPETITION (SM-2 LITE)
+# SR (SM-2 lite)
 # ==========================================================
 def _now_day_ts() -> int:
     today = dt.date.today()
@@ -532,13 +543,13 @@ def sr_update(qid:str, was_correct:bool):
     sr[qid]=rec; save_sr(sr)
 
 # ==========================================================
-# STREAMLIT SESSION DEFAULTS
+# SESSION DEFAULTS
 # ==========================================================
 def ensure_session_keys():
     st.session_state.setdefault("auth_user", None)
-    st.session_state.setdefault("active_topic", None)   # current topic in review
-    st.session_state.setdefault("view", "topics")       # "topics" | "review" | "quiz"
-    st.session_state.setdefault("quiz_mode", "normal")  # normal | spaced | weakest
+    st.session_state.setdefault("active_topic", None)
+    st.session_state.setdefault("view", "dashboard")    # default to DASHBOARD
+    st.session_state.setdefault("quiz_mode", "normal")
     st.session_state.setdefault("quiz_pool", None)
     st.session_state.setdefault("quiz_idx", 0)
     st.session_state.setdefault("quiz_answers", {})
