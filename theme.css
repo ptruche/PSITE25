@@ -1,0 +1,8 @@
+:root { --card-bg:#ffffff; --card-border:#e6e8ec; --accent:#1d4ed8; --muted:#6b7280; }
+.block-container { padding-top: 1.05rem !important; padding-bottom: 0.6rem !important; }
+.stButton>button { border-radius: 8px !important; }
+.psite-card { border:1px solid var(--card-border); border-radius:12px; background:#fff; padding:12px; }
+.psite-title { font-weight:700; font-size:1.1rem; }
+.grid-3 { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; }
+.small-muted { color:#6b7280; font-size:.9rem; }
+.progress-row { display:flex; align-items:center; gap:10px; }
