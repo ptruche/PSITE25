@@ -267,9 +267,3 @@ The pediatric airway is **narrow, anterior, and reactive**.
 - *Operative Pediatric Surgery*, 7th ed. — Airway Endoscopy  
 - *UpToDate* — Airway foreign bodies in children (Management & Complications)  
 - *Cummings Otolaryngology*, Ch. 75 — Tracheobronchial Endoscopy  
-
----
-
-**Summary Statement:**  
-Bronchoscopy is a cornerstone of pediatric surgical practice, demanding procedural skill, airway judgment, and a deep understanding of anatomy and perioperative management.  
-For the PSITE, focus on **foreign body management**, **TEF evaluation**, **trauma**, and **inhalation injury**—with emphasis on **rigid bronchoscopy principles**, **intraoperative decision-making**, and **management of complications**.
