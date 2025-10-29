@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-# Optional cookie manager (we still persist via URL/localStorage too)
+# Optional cookie manager
 COOKIE_AVAILABLE = True
 try:
     from streamlit_cookies_manager import EncryptedCookieManager
@@ -24,6 +24,9 @@ THEME_CSS     = os.path.join(BASE_DIR, "theme.css")
 
 for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR]:
     os.makedirs(p, exist_ok=True)
+
+# if True, ensure a subfolder exists for each topic under data/questions/
+CREATE_TOPIC_DIRS = True
 
 # ============================== THEME ==============================
 def apply_base_theme():
@@ -52,6 +55,10 @@ def apply_base_theme():
       .meter>span{display:block;height:100%;background:var(--accent);width:0%;}
       .pill{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;cursor:pointer;font-size:.85rem;}
       .pill.secondary{background:#f7f9fc;}
+      .q-prompt { border:1px solid var(--border); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
+      .verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
+      .verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
+      .verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -200,7 +207,6 @@ def clear_persisted_login():
 def try_auto_login_persisted():
     if st.session_state.get("auth_user"): return
     _js_restore_token_if_missing()
-    # Cookie
     try:
         cm = _cookies(); token = cm.get("auth")
         user = verify_auth_token(token) if token else None
@@ -209,7 +215,6 @@ def try_auto_login_persisted():
             return
     except Exception:
         pass
-    # URL
     token = _get_query_params().get("t")
     user = verify_auth_token(token) if token else None
     if user:
@@ -353,6 +358,20 @@ ALL_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
 def get_topics() -> List[str]: return ALL_TOPICS
 def get_category_map() -> dict: return CATEGORY_TO_TOPICS
 
+# Helpers for slug <-> topic
+def slugify(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()[:120]
+
+TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
+SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
+
+def ensure_topic_dirs():
+    if not CREATE_TOPIC_DIRS: return
+    for t, slug in TOPIC_TO_SLUG.items():
+        os.makedirs(os.path.join(QUESTIONS_DIR, slug), exist_ok=True)
+
+ensure_topic_dirs()
+
 # ============================== QUESTIONS / REVIEWS ==============================
 FRONTMATTER_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.MULTILINE)
 EXPL_SPLIT_RE  = re.compile(r"<!--\s*EXPLANATION\s*-->", re.IGNORECASE)
@@ -373,8 +392,20 @@ def split_stem_explanation(body: str) -> Tuple[str, str]:
     parts = EXPL_SPLIT_RE.split(body, maxsplit=1)
     return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else (body.strip(), "")
 
+def _infer_subject_from_path(path: str) -> Optional[str]:
+    """
+    Fallback if a file is missing 'subject' in YAML:
+    Try to map parent folder name (slug) back to a known topic.
+    """
+    parent = os.path.basename(os.path.dirname(path)).lower()
+    return SLUG_TO_TOPIC.get(parent)
+
 def load_questions_frame() -> pd.DataFrame:
-    files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "*.md")))
+    """
+    Recursively load all *.md files from data/questions/**.
+    The file's YAML front-matter 'subject' wins; if missing, infer from folder slug.
+    """
+    files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True))
     rows = []
     for f in files:
         try:
@@ -382,9 +413,13 @@ def load_questions_frame() -> pd.DataFrame:
                 raw = h.read()
             meta, body = parse_front_matter(raw)
             stem, explanation = split_stem_explanation(body)
+            subject = (meta.get("subject","") or "").strip()
+            if not subject:
+                # try to infer from folder name
+                subject = _infer_subject_from_path(f) or ""
             rec = {
                 "id": meta.get("id","").strip(),
-                "subject": meta.get("subject","").strip(),
+                "subject": subject,
                 "A": meta.get("A","").strip(),
                 "B": meta.get("B","").strip(),
                 "C": meta.get("C","").strip(),
@@ -393,7 +428,7 @@ def load_questions_frame() -> pd.DataFrame:
                 "correct": meta.get("correct","").strip().upper(),
                 "stem": stem, "explanation": explanation,
             }
-            if rec["id"] and rec["subject"] and rec["correct"]:
+            if rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]:
                 rows.append(rec)
         except Exception:
             continue
@@ -404,6 +439,7 @@ def load_questions_frame() -> pd.DataFrame:
         if c not in df.columns: df[c] = ""
         df[c] = df[c].astype(str).str.strip()
     df["correct"] = df["correct"].str.upper()
+    # Only keep known topics
     df = df[df["subject"].isin(get_topics())].copy()
     return df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
 
@@ -413,13 +449,13 @@ def load_questions_for_subjects(subjects: List[str]) -> pd.DataFrame:
     if df.empty: return df
     return df[df["subject"].isin(subjects)].reset_index(drop=True)
 
-def slugify(s: str) -> str:
-    return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()[:120]
-
 def resolve_review_path(topic: str) -> Optional[str]:
-    slug = slugify(topic)
+    slug = TOPIC_TO_SLUG.get(topic, slugify(topic))
     exact = os.path.join(REVIEWS_DIR, f"{slug}.md")
     if os.path.exists(exact): return exact
+    # also allow direct filename match without slug if needed
+    alt = os.path.join(REVIEWS_DIR, f"{topic}.md")
+    if os.path.exists(alt): return alt
     for p in sorted(glob.glob(os.path.join(REVIEWS_DIR, "*.md"))):
         base = os.path.splitext(os.path.basename(p))[0].lower()
         if base.startswith(slug): return p
@@ -431,11 +467,14 @@ def questions_count_by_topic() -> Dict[str, int]:
     return df.groupby("subject")["id"].nunique().to_dict()
 
 # ============================== USER STATE / ANALYTICS ==============================
+def auth_user_dir(username: str) -> str:
+    p = os.path.join(STATE_DIR, "users", re.sub(r"[^A-Za-z0-9_.-]+", "_", username))
+    os.makedirs(p, exist_ok=True); return p
+
 def _user_file(pathkey: str) -> str:
     u = st.session_state.get("auth_user")
     if not u: raise RuntimeError("Not authenticated.")
-    base = os.path.join(STATE_DIR, "users", re.sub(r"[^A-Za-z0-9_.-]+", "_", u))
-    os.makedirs(base, exist_ok=True)
+    base = auth_user_dir(u)
     paths = {
         "progress": os.path.join(base, "progress.json"),
         "history":  os.path.join(base, "history.json"),
@@ -458,17 +497,14 @@ def load_history() -> List[Dict]: return _read_json(_user_file("history"), [])
 def save_history(arr: List[Dict]): _write_json(_user_file("history"), arr)
 
 def record_attempt(topic: str, qid: str, correct: bool):
-    # Append to history (for trend/analytics)
     hist = load_history()
     hist.append({"ts": int(time.time()), "topic": topic, "id": qid, "correct": bool(correct)})
     save_history(hist)
-    # Update topic progress stats
     prog = load_progress()
     rec = prog.setdefault(topic, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
     rec["total"] += 1
     if correct: rec["correct"] += 1
     rec["last_seen"] = int(time.time())
-    # mark mastered if >=5 with >=80%
     if rec["total"] >= 5 and rec["correct"]/max(1,rec["total"]) >= 0.8:
         rec["mastered"] = True
     save_progress(prog)
@@ -480,7 +516,6 @@ def overall_accuracy() -> float:
     return (cor / tot) if tot else 0.0
 
 def accuracy_timeseries(days: int = 30) -> List[Tuple[str,float,int]]:
-    """Return [(YYYY-MM-DD, accuracy, n)] for last `days` days."""
     hist = load_history()
     if not hist: return []
     today = dt.date.today()
@@ -496,8 +531,8 @@ def accuracy_timeseries(days: int = 30) -> List[Tuple[str,float,int]]:
             by_day[d]["c"] += int(bool(h["correct"]))
     seq = []
     for d, rec in by_day.items():
-        acc = (rec["c"]/rec["t"]) if rec["t"] else None
-        seq.append((d, acc if acc is not None else 0.0, rec["t"]))
+        acc = (rec["c"]/rec["t"]) if rec["t"] else 0.0
+        seq.append((d, acc, rec["t"]))
     return seq
 
 def topic_strengths(k:int=5) -> Tuple[List[Tuple[str,float,int]], List[Tuple[str,float,int]]]:
