@@ -8,7 +8,8 @@ from psite_core import (
     get_category_map, get_topics, resolve_review_path,
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
-    accuracy_timeseries, topic_strengths, sr_due_ids, sr_update
+    accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
+    load_progress,  # added explicit import
 )
 
 st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide", initial_sidebar_state="expanded")
@@ -71,7 +72,6 @@ def _topics_flat():
     return [(cat, t) for cat, arr in cats.items() for t in arr]
 
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
-    # progress: attempted / total available for that topic
     total_q = q_total_map.get(topic, 0)
     attempted = progress_map.get(topic, {}).get("total", 0)
     pct_done = int(100 * attempted / total_q) if total_q else 0
@@ -109,13 +109,11 @@ def view_dashboard():
     acc = overall_accuracy()
     st.metric("Overall Correct", f"{int(round(acc*100))}%")
 
-    # Trend
     series = accuracy_timeseries(days=30)
     if series:
         dates = [d for d,_,_ in series]
         accs  = [a for _,a,_ in series]
         counts= [n for _,_,n in series]
-        # Minimal chart (no seaborn)
         import matplotlib.pyplot as plt
         fig1 = plt.figure()
         plt.plot(dates, [a*100 for a in accs])
@@ -123,7 +121,6 @@ def view_dashboard():
         plt.ylabel("% Correct")
         plt.title("Last 30 days")
         st.pyplot(fig1, clear_figure=True)
-        # Mini bar for volume
         fig2 = plt.figure()
         plt.bar(dates, counts)
         plt.xticks(rotation=45, ha="right")
@@ -135,7 +132,6 @@ def view_dashboard():
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-    # Strengths / Weaknesses
     strong, weak = topic_strengths(k=5)
     c1, c2 = st.columns(2)
     with c1:
@@ -153,11 +149,8 @@ def view_topics():
     st.markdown("<div class='section-title'>All Topics</div>", unsafe_allow_html=True)
     cats = get_category_map()
     q_count = questions_count_by_topic()
-    # Load per-topic progress
-    from psite_core import load_progress
     prog = load_progress()
 
-    # Search + filter
     s1, s2 = st.columns([2,1])
     with s1:
         q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
@@ -266,7 +259,9 @@ def view_quiz():
 
     if row["id"] in st.session_state.quiz_revealed:
         is_correct = (choice == row["correct"])
-        st.markdown(f"<span class='pill {'':'+''}{'secondary' if not is_correct else ''}>{'Correct' if is_correct else 'Incorrect'}</span>", unsafe_allow_html=True)
+        verdict_class = "pill" + ("" if is_correct else " pill secondary")
+        verdict_text = "Correct" if is_correct else "Incorrect"
+        st.markdown(f"<span class='{verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
         if row["explanation"].strip():
             st.markdown(row["explanation"], unsafe_allow_html=True)
         # Log attempt ONCE
@@ -309,19 +304,17 @@ def view_analytics():
     else:
         st.info("No attempts yet.")
 
-    from psite_core import load_progress
     prog = load_progress()
     q_count = questions_count_by_topic()
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     st.markdown("**Topic Completion**")
-    # Compact table
     rows = []
     for t in get_topics():
         attempted = prog.get(t,{}).get("total",0)
         total_q = q_count.get(t,0)
         pct = int(100*attempted/total_q) if total_q else 0
-        acc = int(100* (prog.get(t,{}).get("correct",0) / attempted) ) if attempted else 0
-        rows.append((t, f"{pct}%", f"{acc}%", attempted, total_q))
+        acc_t = int(100* (prog.get(t,{}).get("correct",0) / attempted) ) if attempted else 0
+        rows.append((t, f"{pct}%", f"{acc_t}%", attempted, total_q))
     dfv = pd.DataFrame(rows, columns=["Topic","% Done","% Correct","Attempted","Total Q"])
     st.dataframe(dfv, use_container_width=True, hide_index=True)
 
