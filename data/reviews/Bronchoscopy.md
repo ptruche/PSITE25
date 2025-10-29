@@ -1,5 +1,3 @@
-# Bronchoscopy 
----
 
 ## <span style="color:#4B0082;">Overview</span>
 
