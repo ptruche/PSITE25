@@ -1,4 +1,4 @@
-# app.py  — PSITE quiz app with recursive question discovery (per-topic subfolders)
+# app.py — PSITE quiz app with recursive per-topic folder loading + subject inference
 import os
 import glob
 import json
@@ -59,7 +59,7 @@ div[role="radiogroup"]>label:hover { background:#f5f7fb!important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ============================= Resolve data paths robustly (updated for per-topic folders) =============================
+# ============================= Resolve data paths robustly (recursive, multi-root) =============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FOLDER = os.getenv("QBANK_DATA_DIR", os.path.join(BASE_DIR, "data"))
 
@@ -80,10 +80,7 @@ QUESTION_ROOTS += [
     os.path.join(BASE_DIR, "pages", "data", "questions"),
 ]
 
-# Legacy single-folder support for markdown questions (kept for back-compat; not used for discovery)
-MD_FOLDER = os.path.join(DATA_FOLDER, "questions")
-
-# Reviews path (not used here but preserved if you later re-enable review pages)
+# Reviews path (kept for future use)
 MD_REVIEWS_FOLDER = os.path.join(DATA_FOLDER, "reviews")
 
 # Ensure base folders exist (no error if missing)
@@ -94,7 +91,7 @@ for p in QUESTION_ROOTS + [MD_REVIEWS_FOLDER]:
 REQUIRED_COLS = ["id","subject","stem","A","B","C","D","E","correct","explanation"]
 
 # ============================= SVG rendering + Scoped styling =============================
-SVG_BLOCK_RE = re.compile(r"(<svg[\\s\\S]*?</svg>)", re.IGNORECASE)
+SVG_BLOCK_RE = re.compile(r"(<svg[\s\S]*?</svg>)", re.IGNORECASE)
 
 EXPLAIN_SCOPE_CSS = """
 <style>
@@ -126,7 +123,7 @@ def render_explanation_block(explain_text: str):
         if not chunk or not chunk.strip():
             continue
         if chunk.lstrip().lower().startswith("<svg"):
-            m = re.search(r'height="(\\d+)"', chunk, re.IGNORECASE)
+            m = re.search(r'height="(\d+)"', chunk, re.IGNORECASE)
             height = int(m.group(1)) if m else 320
             components.html(chunk, height=height + 20, scrolling=False)
         else:
@@ -134,9 +131,9 @@ def render_explanation_block(explain_text: str):
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ============================= Markdown loaders =============================
-FRONTMATTER_RE = re.compile(r"^---\\s*([\\s\\S]*?)\\s*---\\s*([\\s\\S]*)$", re.MULTILINE)
-EXPL_SPLIT_RE  = re.compile(r"<!--\\s*EXPLANATION\\s*-->", re.IGNORECASE)
+# ============================= Markdown parsing utils =============================
+FRONTMATTER_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.MULTILINE)
+EXPL_SPLIT_RE  = re.compile(r"<!--\s*EXPLANATION\s*-->", re.IGNORECASE)
 
 def _parse_front_matter(text: str):
     m = FRONTMATTER_RE.match(text)
@@ -156,20 +153,44 @@ def _split_stem_explanation(body: str) -> Tuple[str, str]:
         return parts[0].strip(), parts[1].strip()
     return body.strip(), ""
 
+def _iter_markdown_files() -> List[str]:
+    """Recursively find all .md files under the configured QUESTION_ROOTS."""
+    files: List[str] = []
+    for root in QUESTION_ROOTS:
+        if not os.path.isdir(root):
+            continue
+        files.extend(sorted(glob.glob(os.path.join(root, "**", "*.md"), recursive=True)))
+    return files
+
+def _infer_subject_from_path(path: str) -> str:
+    """
+    Derive a human-readable subject from the parent folder name.
+    e.g., data/questions/congenital-diaphragmatic-hernia/file.md -> 'Congenital Diaphragmatic Hernia'
+    """
+    parent = os.path.basename(os.path.dirname(path))
+    pretty = re.sub(r"[-_]+", " ", parent).strip()
+    pretty = re.sub(r"\s+", " ", pretty)
+    return pretty.title()
+
 def _read_md_question(path: str) -> Dict[str, str]:
     with open(path, "r", encoding="utf-8") as f:
         raw = f.read()
     meta, body = _parse_front_matter(raw)
     stem, explanation = _split_stem_explanation(body)
+
+    subject = (meta.get("subject") or "").strip()
+    if not subject:
+        subject = _infer_subject_from_path(path)  # <-- infer from folder name if missing
+
     rec = {
-        "id": meta.get("id","").strip(),
-        "subject": meta.get("subject","").strip(),
-        "A": meta.get("A","").strip(),
-        "B": meta.get("B","").strip(),
-        "C": meta.get("C","").strip(),
-        "D": meta.get("D","").strip(),
-        "E": meta.get("E","").strip(),
-        "correct": meta.get("correct","").strip().upper(),
+        "id": (meta.get("id") or "").strip(),
+        "subject": subject,
+        "A": (meta.get("A") or "").strip(),
+        "B": (meta.get("B") or "").strip(),
+        "C": (meta.get("C") or "").strip(),
+        "D": (meta.get("D") or "").strip(),
+        "E": (meta.get("E") or "").strip(),
+        "correct": (meta.get("correct") or "").strip().upper(),
         "stem": stem,
         "explanation": explanation,
     }
@@ -180,22 +201,8 @@ def _read_md_question(path: str) -> Dict[str, str]:
             raise ValueError(f"Missing choice {c}")
     return rec
 
-# ----------------- NEW: recursive discovery across per-topic folders -----------------
-def _iter_markdown_files() -> List[str]:
-    """Recursively find all .md files under the configured QUESTION_ROOTS."""
-    files: List[str] = []
-    for root in QUESTION_ROOTS:
-        if not os.path.isdir(root):
-            continue
-        files.extend(sorted(glob.glob(os.path.join(root, "**", "*.md"), recursive=True)))
-    return files
-
 def _read_all_markdown_recursive() -> Tuple[pd.DataFrame, int]:
-    """
-    Read every .md discovered recursively under all QUESTION_ROOTS.
-    Uses _read_md_question() to parse each file.
-    Returns (DataFrame, skipped_count).
-    """
+    """Read every .md discovered recursively under all QUESTION_ROOTS."""
     files = _iter_markdown_files()
     rows, skipped = [], 0
     for f in files:
@@ -206,7 +213,6 @@ def _read_all_markdown_recursive() -> Tuple[pd.DataFrame, int]:
     if not rows:
         return pd.DataFrame(columns=REQUIRED_COLS), skipped
     df = pd.DataFrame(rows)
-    # normalize columns
     for c in REQUIRED_COLS:
         if c not in df.columns:
             df[c] = ""
@@ -218,7 +224,7 @@ def _read_all_markdown_recursive() -> Tuple[pd.DataFrame, int]:
 def discover_subjects_from_markdown_recursive() -> Dict[str, Set[str]]:
     """
     Build a map of subject -> set(file_paths) by scanning all .md files recursively.
-    Relies on front-matter 'subject:' inside each file.
+    Uses front-matter 'subject' if present; otherwise infers from parent folder.
     """
     files = _iter_markdown_files()
     subj_to_files: Dict[str, Set[str]] = {}
@@ -226,16 +232,17 @@ def discover_subjects_from_markdown_recursive() -> Dict[str, Set[str]]:
         try:
             with open(f, "r", encoding="utf-8") as h:
                 raw = h.read()
-            meta, _body = _parse_front_matter(raw)
+            meta, _ = _parse_front_matter(raw)
             subj = (meta.get("subject") or "").strip()
+            if not subj:
+                subj = _infer_subject_from_path(f)
             if subj:
                 subj_to_files.setdefault(subj, set()).add(f)
         except Exception:
             continue
     return subj_to_files
-# -------------------------------------------------------------------
 
-# ============================= (Optional) CSV support =============================
+# ============================= (Optional) CSV support (unchanged) =============================
 def _read_csv_strict(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     missing = [c for c in REQUIRED_COLS if c not in df.columns]
@@ -268,6 +275,7 @@ for subj, paths in MD_SUBJECTS.items():
     SUBJECT_TO_FILES.setdefault(subj, set()).update(paths)
 for subj, paths in CSV_SUBJECTS.items():
     SUBJECT_TO_FILES.setdefault(subj, set()).update(paths)
+
 SUBJECT_OPTIONS = sorted(SUBJECT_TO_FILES.keys(), key=lambda s: s.lower())
 
 def _load_all_topics() -> pd.DataFrame:
@@ -294,6 +302,7 @@ def load_questions_for_subjects(selected_subjects: List[str], random_all: bool) 
     df_md, _ = _read_all_markdown_recursive()
     if not df_md.empty:
         frames.append(df_md[df_md["subject"].isin(selected_subjects)])
+
     files_to_read = set()
     for subj in selected_subjects:
         files_to_read |= CSV_SUBJECTS.get(subj, set())
@@ -303,6 +312,7 @@ def load_questions_for_subjects(selected_subjects: List[str], random_all: bool) 
             frames.append(df[df["subject"].isin(selected_subjects)])
         except Exception:
             pass
+
     if not frames:
         return pd.DataFrame(columns=REQUIRED_COLS)
     out = pd.concat(frames, ignore_index=True)
@@ -386,7 +396,17 @@ with st.sidebar:
 
     SUBJECT_OPTIONS = sorted(SUBJECT_TO_FILES.keys(), key=lambda s: s.lower())
     if not SUBJECT_OPTIONS:
-        st.error(f"No subjects found. Put .md files in `{MD_FOLDER}` (or subfolders under `data/questions/`) with proper YAML front-matter, then reload.")
+        st.error(f"No subjects found. Put .md files in `{os.path.join(DATA_FOLDER, 'questions')}` (or subfolders under `data/questions/`) with proper YAML front-matter, then reload.")
+        # Debug helper so you can see what's happening if nothing is found
+        with st.expander("Debug: What the app sees", expanded=False):
+            st.caption("Discovered question roots:")
+            for r in QUESTION_ROOTS:
+                st.code(r)
+            files = _iter_markdown_files()
+            st.caption(f"Markdown files found: {len(files)}")
+            if st.checkbox("Show file list"):
+                for f in files[:500]:
+                    st.write(f)
         st.stop()
 
     random_all = st.toggle("Random from all topics", value=False)
