@@ -238,17 +238,36 @@ def view_quiz():
 
     i = st.session_state.get("quiz_idx", 0)
     row = pool.iloc[i]
+    letters = ["A","B","C","D","E"]
+
+    # progress + label
     pct = int(((i + 1) / len(pool)) * 100)
     st.progress(pct/100)
     suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
     st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
+    # stem
     st.markdown(f"<div class='topic-card q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
-    letters = ["A","B","C","D","E"]
-    default_idx = letters.index(st.session_state.quiz_answers[row["id"]]) if row["id"] in st.session_state.quiz_answers else None
-    choice = st.radio("", letters, index=default_idx, format_func=lambda L: row[L], label_visibility="collapsed", key=f"q_{row['id']}")
-    st.session_state.quiz_answers[row["id"]] = choice
+    # ---- robust previous choice handling ----
+    prev = st.session_state.get("quiz_answers", {}).get(row["id"], None)
+    if isinstance(prev, str):
+        prev = prev.strip().upper()
+    if prev not in letters:
+        prev = None
+    # pick an index safely (Streamlit radio index must be int)
+    default_idx = letters.index(prev) if prev in letters else 0
+
+    choice = st.radio(
+        label="",
+        options=letters,
+        index=default_idx,
+        format_func=lambda L: row[L],
+        label_visibility="collapsed",
+        key=f"radio_{row['id']}",  # widget persists selection
+    )
+    # persist answer as clean letter
+    st.session_state.quiz_answers[row["id"]] = str(choice).strip().upper()
 
     c1, c2, c3, c4 = st.columns([1,2,2,1])
     with c1:
@@ -265,27 +284,35 @@ def view_quiz():
             st.session_state.quiz_finished = True
 
     if row["id"] in st.session_state.quiz_revealed:
-        is_correct = (choice == row["correct"])
+        is_correct = (st.session_state.quiz_answers.get(row["id"]) == row["correct"])
         verdict_class = "pill" + ("" if is_correct else " pill secondary")
         verdict_text = "Correct" if is_correct else "Incorrect"
         st.markdown(f"<span class='{verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
-        if row["explanation"].strip():
-            st.markdown(row["explanation"], unsafe_allow_html=True)
+        exp = (row.get("explanation") or "").strip()
+        if exp:
+            st.markdown(exp, unsafe_allow_html=True)
         # Log attempt ONCE
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
+            from psite_core import record_attempt, sr_update
             record_attempt(row.get("subject",""), row["id"], is_correct)
             if st.session_state.get("quiz_mode") == "spaced":
                 sr_update(row["id"], is_correct)
             st.session_state[key] = True
 
     if st.session_state.quiz_finished:
+        # Only count revealed questions in the score denominator
+        revealed_ids = set(st.session_state.quiz_revealed)
+        if not revealed_ids:
+            st.info("Reveal answers to compute a score.")
+            return
+        # Build a dict of correct answers for quick lookup
+        correct_map = pool.set_index("id")["correct"].to_dict()
         correct_n = sum(
             1 for qid, ans in st.session_state.quiz_answers.items()
-            if pool.set_index("id").loc[qid]["correct"] == ans and qid in st.session_state.quiz_revealed
+            if qid in revealed_ids and correct_map.get(qid) == ans
         )
-        revealed_n = sum(1 for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed)
-        st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
+        st.success(f"Score: {correct_n}/{len(revealed_ids)}")
 
 def view_analytics():
     st.markdown("<div class='section-title'>Analytics</div>", unsafe_allow_html=True)
