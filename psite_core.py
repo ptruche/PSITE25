@@ -300,7 +300,7 @@ def auth_logout_button():
 
 # ============================== SCORE TOPICS ==============================
 CATEGORY_TO_TOPICS = {
-    "Category 1: Thoracic-Pulmonary-Airway-Chest Wall": [
+    "Category 1: Thoracic, Pulmonary, Airway, Chest Wall": [
         "Bronchoscopy",
         "Chest Wall Deformities: Pectus Excavatum/Carinatum, Marfan’s and Poland’s Syndromes",
         "Chylothorax","Congenital Diaphragmatic Hernia","Cystic Diseases of the Lung",
@@ -315,7 +315,7 @@ CATEGORY_TO_TOPICS = {
         "Subacute Bacterial Endocarditis Prophylaxis","Tracheobronchial Foreign Bodies",
         "Tracheomalacia","Vascular Ring and Pulmonary Artery Sling",
     ],
-    "Category 2: GI-Hepatobiliary-Abdominal Wall-Fetal": [
+    "Category 2: GI, Hepatobiliary, Abdominal Wall, Fetal": [
         "Abdominal Pain","Alimentary Tract Duplications","Appendicitis","Ascites: Chylous",
         "Biliary Atresia","Choledochal Cysts","Cloacal Exstrophy/Bladder Exstrophy",
         "Duodenal Atresia/Stenosis/Webs/Annular Pancreas","Gallbladder Disease, Gallstones",
@@ -327,7 +327,7 @@ CATEGORY_TO_TOPICS = {
         "Omphalomesenteric Duct Remnants, Urachus, and Meckel's","Peptic Ulcer Disease","Polyps",
         "Portal Hypertension","Umbilical Hernia and Other Umbilical Disorders",
     ],
-    "Category 3: Head-Neck-Endocrine-Breast-GU-Imperforate Anus-Diagnosis": [
+    "Category 3: Head/Neck, Endocrine, Breast, GU, Anorectal": [
         "Adrenal Cortical Tumors, Pheochromocytoma",
         "Anal Pathology: Fissures, Abscesses, Fistulae, Pilonidal, Prolapse",
         "Anorectal Malformation","Arterial Diseases and Vasculitis","Branchial Cleft, Arch Anomalies",
@@ -338,7 +338,7 @@ CATEGORY_TO_TOPICS = {
         "Thyroglossal Duct Cyst/Sinus","Thyroid Nodules","Torsions: Appendix Testes, Testicular",
         "Torticollis","Undescended Testicle (Cryptorchidism)","Vaginal Atresia, Hydrometrocolpos","Vascular Anomalies",
     ],
-    "Category 4: Trauma-Critical Care-Metabolism-Surgical Emergencies": [
+    "Category 4: Trauma and Critical Care, Metabolism, Surgical Emergencies": [
         "Abdominal Trauma","Acute Renal Failure","ARDS",
         "Burns: Resuscitation, Airway, Electrical, Nutrition, Wound, Sepsis",
         "Cardiovascular Trauma: Tamponade, Contusion, Arch Disruption, Peripheral Vascular Injuries",
@@ -352,7 +352,7 @@ CATEGORY_TO_TOPICS = {
         "Short Bowel Syndrome/Intestinal Failure","Soft Tissue Trauma: Tetanus, Bites, Wound Infection, Crush Injuries",
         "Thoracic Trauma","Transplantation","Trauma: Initial Assessment and Resuscitation",
     ],
-    "Category 5: Cancer-Tumors-Spleen": [
+    "Category 5: Cancer, Tumors, Spleen": [
         "Abdominal Mass in the Newborn","Adrenal Cancer",
         "Benign Liver Tumors: Hepatic Mesenchymal Hamartoma/Adenoma/FNH",
         "Bone Tumors: Osteogenic Sarcoma, Ewing Sarcoma",
@@ -365,6 +365,7 @@ CATEGORY_TO_TOPICS = {
         "Testicular Tumors","Wilms Tumor, Renal Cell Carcinoma, and Hemihypertrophy",
     ],
 }
+
 ALL_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
 def get_topics() -> List[str]: return ALL_TOPICS
 def get_category_map() -> dict: return CATEGORY_TO_TOPICS
