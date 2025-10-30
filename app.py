@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 import pandas as pd
-
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
     auth_is_authed, auth_login_form, auth_logout_button,
@@ -9,7 +8,7 @@ from psite_core import (
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
     accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
-    load_progress,  # added explicit import
+    load_progress, debug_scan_report, question_roots,
 )
 
 st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide", initial_sidebar_state="expanded")
@@ -63,14 +62,22 @@ with st.sidebar:
         st.rerun()
     if st.button("Analytics", use_container_width=True):
         st.session_state.view = "analytics"; st.rerun()
+
+    st.markdown("---")
+    with st.expander("Debug", expanded=False):
+        st.caption("Question roots scanned:")
+        for r in question_roots():
+            st.code(r)
+        df_dbg = debug_scan_report()
+        if df_dbg.empty:
+            st.info("No .md files discovered under the scanned roots.")
+        else:
+            st.dataframe(df_dbg, use_container_width=True, hide_index=True)
+
     st.markdown("---")
     auth_logout_button()
 
 # ---------------- Utilities ----------------
-def _topics_flat():
-    cats = get_category_map()
-    return [(cat, t) for cat, arr in cats.items() for t in arr]
-
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
     total_q = q_total_map.get(topic, 0)
     attempted = progress_map.get(topic, {}).get("total", 0)
@@ -184,7 +191,7 @@ def view_review():
     st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
     p = resolve_review_path(topic)
     if not p:
-        st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named after this topic (slugified).")
+        st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named by topic slug.")
         return
     with open(p, "r", encoding="utf-8") as f:
         txt = f.read()
@@ -226,7 +233,7 @@ def view_quiz():
         if st.session_state.get("quiz_mode") == "spaced":
             st.success("✅ No spaced-repetition items due.")
         else:
-            st.info("No questions found. Add `.md` files to `data/questions/`.")
+            st.info("No questions found. Add `.md` files under the question roots shown in Debug.")
         return
 
     i = st.session_state.get("quiz_idx", 0)
@@ -236,7 +243,7 @@ def view_quiz():
     suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
     st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
-    st.markdown(f"<div class='topic-card'>{row['stem']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='topic-card q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
     letters = ["A","B","C","D","E"]
     default_idx = letters.index(st.session_state.quiz_answers[row["id"]]) if row["id"] in st.session_state.quiz_answers else None
