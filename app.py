@@ -10,7 +10,7 @@ from psite_core import (
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
     accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
-    load_progress, load_history,  # using history for avg/day
+    load_progress, load_history,
     debug_scan_report, question_roots,
 )
 
@@ -25,7 +25,7 @@ apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# ------------- Header (fixed, shifted for sidebar) -------------
+# ------------- Header (fixed, padded for sidebar) -------------
 st.markdown("""
 <style>
   :root {
@@ -33,7 +33,6 @@ st.markdown("""
     --header-h: 64px;
     --brand-pad-left: var(--sidebar-w);
   }
-  /* Brand header never hides under sidebar */
   .app-header{
     position:fixed; top:0; left:0; right:0; height:var(--header-h);
     background:#fff; border-bottom:1px solid #eef0f3; z-index:1000;
@@ -49,27 +48,34 @@ st.markdown("""
   header{visibility:hidden;height:0!important;}
   .block-container{ padding-top: calc(var(--header-h) + 12px) !important; }
 
-  /* Cleaner chips/pills */
-  .chip { display:inline-flex; align-items:center; gap:.4rem;
-          padding:.34rem .6rem; border:1px solid #dbe2ea; border-radius:999px;
-          background:#fff; cursor:pointer; font-size:.9rem; }
+  /* Chips / category header */
+  .chipbar {
+    display:flex; gap:.5rem; flex-wrap:wrap;
+    align-items:center; margin:.25rem 0 .75rem 0;
+  }
+  .chip {
+    display:inline-flex; align-items:center; gap:.4rem;
+    padding:.34rem .6rem; border:1px solid #dbe2ea; border-radius:999px;
+    background:#fff; cursor:pointer; font-size:.9rem;
+    max-width: 100%; white-space: nowrap;
+  }
   .chip.active { background:#eef4ff; border-color:#cfe0ff; color:#1d4ed8; }
 
-  /* Topic row list */
+  /* Topic list rows */
   .topic-row-card{
     border:1px solid #eef0f3; border-radius:14px; padding:.75rem .9rem; background:#fff;
     display:flex; align-items:center; gap:1rem; justify-content:space-between;
   }
   .topic-row-main{ display:flex; align-items:center; gap:1rem; flex:1; min-width:0; }
   .topic-row-title{ font-weight:600; font-size:.98rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .meter{ width:160px; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
+  .meter{ width:200px; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
   .meter>span{ display:block; height:100%; background:#1d4ed8; width:0%; }
 
-  /* Donut cards */
+  /* KPI donuts */
   .kpi-card { border:1px solid #eef0f3; border-radius:14px; background:#fff; padding:1rem; text-align:center; }
   .kpi-label { font-size:.9rem; color:#6b7280; margin-top:.4rem; }
 
-  /* Buttons minimal */
+  /* Quiz bits */
   .pill{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;cursor:pointer;font-size:.85rem;}
   .pill.secondary{background:#f7f9fc;}
   .q-prompt { border:1px solid #eef0f3; background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
@@ -98,7 +104,7 @@ if not auth_is_authed():
     auth_login_form()
     st.stop()
 
-# ------------- Sidebar (simplified) -------------
+# ------------- Sidebar -------------
 with st.sidebar:
     st.markdown("### Navigate")
     if st.button("Dashboard", use_container_width=True):
@@ -136,9 +142,6 @@ with st.sidebar:
 
 # ------------- Helpers -------------
 def donut_svg(percent: float, label: str, size: int = 140) -> str:
-    """
-    Render a clean donut with percentage label using pure SVG (no extra deps).
-    """
     pct = max(0, min(100, int(round(percent))))
     r = 52
     cx = cy = size // 2
@@ -168,27 +171,12 @@ def _avg_per_day_last_7() -> float:
     return round(n / 7.0, 1)
 
 def _total_available_and_done():
-    q_count = questions_count_by_topic()  # dict topic -> total questions
-    prog = load_progress()                # dict topic -> {correct, total, ... attempted count}
+    q_count = questions_count_by_topic()
+    prog = load_progress()
     total_available = sum(q_count.values())
     total_done = sum(v.get("total", 0) for v in prog.values())
     total_correct = sum(v.get("correct", 0) for v in prog.values())
     return total_available, total_done, total_correct
-
-def _category_chips(active: str | None):
-    cats = list(get_category_map().keys())
-    # Default to first category if none yet
-    if not active or active not in cats:
-        active = cats[0] if cats else None
-    cols = st.columns(min(5, max(1, len(cats))))
-    chosen = active
-    for i, c in enumerate(cats):
-        with cols[i % len(cols)]:
-            cls = "chip active" if c == active else "chip"
-            if st.button(c, key=f"cat_{i}", use_container_width=True):
-                chosen = c
-        st.markdown(f"<div class='{cls}' style='display:none'></div>", unsafe_allow_html=True)
-    return chosen
 
 def _render_topic_row(topic: str, q_total_map: dict, progress_map: dict):
     total_q = q_total_map.get(topic, 0)
@@ -212,6 +200,30 @@ def _render_topic_row(topic: str, q_total_map: dict, progress_map: dict):
     </div>
     """, unsafe_allow_html=True)
 
+def _category_chipbar_top(active: str | None):
+    cats = list(get_category_map().keys())
+    if not cats:
+        return None
+    # Default active category (persist across clicks)
+    if not active or active not in cats:
+        active = cats[0]
+
+    # Render chips as a row (wrapping)
+    st.markdown("<div class='chipbar'>", unsafe_allow_html=True)
+    cols = st.columns(min(6, max(1, len(cats))))
+    chosen = active
+    for i, c in enumerate(cats):
+        with cols[i % len(cols)]:
+            # Use a Streamlit button for state change; style with CSS chips look
+            clicked = st.button(c, key=f"cat_{i}", use_container_width=True)
+            # Markup mirror for visual styling (keeps consistent look)
+            cls = "chip active" if c == active else "chip"
+            st.markdown(f"<div class='{cls}' style='display:none'>{c}</div>", unsafe_allow_html=True)
+            if clicked:
+                chosen = c
+    st.markdown("</div>", unsafe_allow_html=True)
+    return chosen
+
 # ------------- Views -------------
 def view_dashboard():
     st.markdown("### Dashboard")
@@ -232,7 +244,7 @@ def view_dashboard():
         </div>
         """.format(avg=f"{avg_per_day:.1f}"), unsafe_allow_html=True)
 
-    # Quick “What to do next”
+    # Simple “what to do next”
     st.markdown("---")
     st.markdown("**Next steps**")
     strong, weak = topic_strengths(k=3)
@@ -246,39 +258,34 @@ def view_dashboard():
 def view_topics():
     st.markdown("### Score Topics")
 
-    # Left rail: category selection + search; Right: topic rows of that category
-    left, right = st.columns([1,2], gap="large")
-
     cats = get_category_map()
     q_count = questions_count_by_topic()
     prog = load_progress()
 
-    with left:
-        st.caption("Category")
-        active_cat = st.session_state.get("active_cat")
-        active_cat = _category_chips(active_cat)
-        st.session_state.active_cat = active_cat
-        st.caption("Search")
-        q = st.text_input("Search", placeholder="Search topics", label_visibility="collapsed").strip().lower()
+    # Category header at top (chips)
+    active_cat = st.session_state.get("active_cat")
+    active_cat = _category_chipbar_top(active_cat)
+    st.session_state.active_cat = active_cat
 
-    with right:
-        topics = []
-        if active_cat and active_cat in cats:
-            for t in cats[active_cat]:
-                if q and q not in t.lower(): continue
-                topics.append(t)
+    # Search just under chips
+    q = st.text_input("Search topics", placeholder="Search…").strip().lower()
 
-        if not topics:
-            st.info("No topics match your filter.")
-            return
+    # Topic list (single column, clean rows)
+    topics = []
+    if active_cat and active_cat in cats:
+        for t in cats[active_cat]:
+            if q and q not in t.lower(): continue
+            topics.append(t)
 
-        # Compact, elegant list
-        for t in topics:
-            _render_topic_row(t, q_count, prog)
-            st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
+    if not topics:
+        st.info("No topics match your filter.")
+        return
+
+    for t in topics:
+        _render_topic_row(t, q_count, prog)
+        st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
 
 def view_review():
-    # Query param support for "Review" click-through
     qp = st.query_params
     topic_from_qp = qp.get("topic", None)
     if topic_from_qp:
@@ -310,7 +317,6 @@ def view_review():
         st.rerun()
 
 def view_make_quiz():
-    # Query param support for "Make Quiz" click-through
     qp = st.query_params
     pre_topic = qp.get("topic", None)
 
@@ -345,16 +351,13 @@ def view_quiz():
     row = pool.iloc[i]
     letters = ["A","B","C","D","E"]
 
-    # progress + label
     pct = int(((i + 1) / len(pool)) * 100)
     st.progress(pct/100)
     suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
     st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
-    # stem
     st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
-    # robust previous choice handling
     prev = st.session_state.get("quiz_answers", {}).get(row["id"], None)
     if isinstance(prev, str):
         prev = prev.strip().upper()
@@ -394,7 +397,6 @@ def view_quiz():
         exp = (row.get("explanation") or "").strip()
         if exp:
             st.markdown(exp, unsafe_allow_html=True)
-        # Log attempt ONCE
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
             record_attempt(row.get("subject",""), row["id"], is_correct)
@@ -403,7 +405,6 @@ def view_quiz():
             st.session_state[key] = True
 
     if st.session_state.quiz_finished:
-        # Only count revealed questions in the score denominator
         revealed_ids = set(st.session_state.quiz_revealed)
         if not revealed_ids:
             st.info("Reveal answers to compute a score.")
@@ -417,12 +418,9 @@ def view_quiz():
 
 # ------------- Router -------------
 view = st.session_state.get("view", "dashboard")
-# Allow query-param navigation for Review/Make Quiz buttons
 qp = st.query_params
 if "view" in qp:
     st.session_state.view = qp.get("view")
-    # consume the qp (optional)
-    # st.query_params.clear()
 
 if st.session_state.view == "topics":
     view_topics()
