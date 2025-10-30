@@ -1,11 +1,11 @@
-# psite_core.py  —  core services for PSITE Mastery
+# psite_core.py — core services for PSITE Mastery
 import os, re, glob, json, time, secrets, base64, hashlib, hmac, datetime as dt
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-# Optional cookie manager (for persistent login)
+# ============================== OPTIONAL COOKIES ==============================
 COOKIE_AVAILABLE = True
 try:
     from streamlit_cookies_manager import EncryptedCookieManager
@@ -17,7 +17,7 @@ BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR      = os.path.join(BASE_DIR, "data")
 QUESTIONS_DIR = os.path.join(DATA_DIR, "questions")
 REVIEWS_DIR   = os.path.join(DATA_DIR, "reviews")
-# NEW: if you store questions under data/reviews/questions/<topic>/*.md
+# For repos that put questions under reviews:
 REVIEWS_QUESTIONS_DIR = os.path.join(REVIEWS_DIR, "questions")
 
 # Optional pages/ mirrors (supported but not required)
@@ -26,22 +26,20 @@ PAGES_QUESTIONS_DIR         = os.path.join(PAGES_DATA_DIR, "questions")
 PAGES_REVIEWS_DIR           = os.path.join(PAGES_DATA_DIR, "reviews")
 PAGES_REVIEWS_QUESTIONS_DIR = os.path.join(PAGES_REVIEWS_DIR, "questions")
 
-STATE_DIR     = os.path.join(DATA_DIR, "state")
-USERS_JSON    = os.path.join(STATE_DIR, "users.json")
-SECRET_FILE   = os.path.join(STATE_DIR, "secret.key")
-THEME_CSS     = os.path.join(BASE_DIR, "theme.css")
+STATE_DIR   = os.path.join(DATA_DIR, "state")
+USERS_JSON  = os.path.join(STATE_DIR, "users.json")
+SECRET_FILE = os.path.join(STATE_DIR, "secret.key")
+THEME_CSS   = os.path.join(BASE_DIR, "theme.css")
 
 for p in [
     DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR,
     REVIEWS_QUESTIONS_DIR,
     PAGES_DATA_DIR, PAGES_QUESTIONS_DIR, PAGES_REVIEWS_DIR, PAGES_REVIEWS_QUESTIONS_DIR
 ]:
-    try:
-        os.makedirs(p, exist_ok=True)
-    except Exception:
-        pass
+    try: os.makedirs(p, exist_ok=True)
+    except Exception: pass
 
-# if True, ensure a subfolder exists for each topic under the primary locations
+# Ensure subfolders for each topic (created in all question roots)
 CREATE_TOPIC_DIRS = True
 
 # ============================== THEME ==============================
@@ -374,12 +372,21 @@ ALL_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
 def get_topics() -> List[str]: return ALL_TOPICS
 def get_category_map() -> dict: return CATEGORY_TO_TOPICS
 
-# Helpers for slug <-> topic
+# ============================== SLUG HELPERS ==============================
 def slugify(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()[:120]
 
 TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
 SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
+
+def _canon_topic_from_any(name_or_slug: str) -> Optional[str]:
+    """
+    Accept a human topic name or a slug-ish string; return canonical SCORE topic by slug.
+    """
+    if not name_or_slug:
+        return None
+    s = slugify(name_or_slug)
+    return SLUG_TO_TOPIC.get(s)
 
 def ensure_topic_dirs():
     """Create topic subfolders in all supported question roots so users can drop files easily."""
@@ -412,23 +419,14 @@ def split_stem_explanation(body: str) -> Tuple[str, str]:
     parts = EXPL_SPLIT_RE.split(body, maxsplit=1)
     return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else (body.strip(), "")
 
-def _infer_subject_from_path(path: str) -> Optional[str]:
-    """
-    Fallback if a file is missing 'subject' in YAML:
-    Try to map parent folder name (slug) back to a known topic.
-    """
-    parent = os.path.basename(os.path.dirname(path)).lower()
-    return SLUG_TO_TOPIC.get(parent)
-
 def question_roots() -> List[str]:
     """All directories we scan recursively for questions."""
     roots = [
         QUESTIONS_DIR,
-        REVIEWS_QUESTIONS_DIR,          # <— your current layout: data/reviews/questions/<topic>/*.md
+        REVIEWS_QUESTIONS_DIR,          # e.g., data/reviews/questions/<topic>/*.md
         PAGES_QUESTIONS_DIR,
         PAGES_REVIEWS_QUESTIONS_DIR,
     ]
-    # Keep only existing folders (silently ignore missing)
     return [r for r in roots if os.path.isdir(r)]
 
 def _iter_question_markdown_files() -> List[str]:
@@ -437,10 +435,15 @@ def _iter_question_markdown_files() -> List[str]:
         files.extend(sorted(glob.glob(os.path.join(root, "**", "*.md"), recursive=True)))
     return files
 
+def _infer_subject_from_path(path: str) -> Optional[str]:
+    """Map parent folder name to canonical topic using slugify."""
+    parent = os.path.basename(os.path.dirname(path))
+    return _canon_topic_from_any(parent)
+
 def load_questions_frame() -> pd.DataFrame:
     """
-    Recursively load all *.md question files from all supported roots.
-    The file's YAML front-matter 'subject' wins; if missing, infer from folder slug.
+    Recursively load all *.md question files from supported roots.
+    Canonicalize YAML 'subject' to SCORE topic by slug; if missing, infer from folder.
     """
     files = _iter_question_markdown_files()
     rows = []
@@ -450,9 +453,10 @@ def load_questions_frame() -> pd.DataFrame:
                 raw = h.read()
             meta, body = parse_front_matter(raw)
             stem, explanation = split_stem_explanation(body)
-            subject = (meta.get("subject","") or "").strip()
-            if not subject:
-                subject = _infer_subject_from_path(f) or ""
+
+            subject_raw = (meta.get("subject", "") or "").strip()
+            subject = _canon_topic_from_any(subject_raw) or _infer_subject_from_path(f) or ""
+
             rec = {
                 "id": meta.get("id","").strip(),
                 "subject": subject,
@@ -462,13 +466,17 @@ def load_questions_frame() -> pd.DataFrame:
                 "D": meta.get("D","").strip(),
                 "E": meta.get("E","").strip(),
                 "correct": meta.get("correct","").strip().upper(),
-                "stem": stem, "explanation": explanation,
+                "stem": stem,
+                "explanation": explanation,
             }
-            # require minimal fields
-            if rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]:
-                rows.append(rec)
+
+            if not (rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]):
+                continue  # skip malformed/missing essentials
+
+            rows.append(rec)
+
         except Exception:
-            continue
+            continue  # skip unreadable files
 
     if not rows:
         return pd.DataFrame(columns=REQUIRED_COLS)
@@ -478,7 +486,8 @@ def load_questions_frame() -> pd.DataFrame:
         if c not in df.columns: df[c] = ""
         df[c] = df[c].astype(str).str.strip()
     df["correct"] = df["correct"].str.upper()
-    # Only keep known topics (from SCORE list)
+
+    # Keep only known topics
     df = df[df["subject"].isin(get_topics())].copy()
     df = df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
     return df
@@ -494,25 +503,20 @@ def resolve_review_path(topic: str) -> Optional[str]:
     Find a review markdown for a topic by slug in:
       - data/reviews/<slug>.md
       - pages/data/reviews/<slug>.md
-      Also accept files that *start with* the slug (e.g., bronchoscopy_v2.md)
+      Also accept files that start with the slug (e.g., bronchoscopy_v2.md)
     """
     slug = TOPIC_TO_SLUG.get(topic, slugify(topic))
-
     candidates = [
         os.path.join(REVIEWS_DIR, f"{slug}.md"),
         os.path.join(PAGES_REVIEWS_DIR, f"{slug}.md"),
     ]
     for p in candidates:
-        if os.path.exists(p):
-            return p
-
-    # fuzzy startswith match
+        if os.path.exists(p): return p
     for base_dir in [REVIEWS_DIR, PAGES_REVIEWS_DIR]:
         try:
             for p in sorted(glob.glob(os.path.join(base_dir, "*.md"))):
                 base = os.path.splitext(os.path.basename(p))[0].lower()
-                if base.startswith(slug):
-                    return p
+                if base.startswith(slug): return p
         except Exception:
             pass
     return None
@@ -521,6 +525,46 @@ def questions_count_by_topic() -> Dict[str, int]:
     df = load_questions_frame()
     if df.empty: return {t:0 for t in get_topics()}
     return df.groupby("subject")["id"].nunique().to_dict()
+
+# -------------- Debug scan (optional; useful while organizing your repo) --------------
+def debug_scan_report() -> pd.DataFrame:
+    """
+    Per-file diagnostic: shows YAML subject, inferred subject, final mapped subject,
+    and why a file was skipped.
+    """
+    cols = ["file","subject_yaml","parent_folder","subject_final","ok","reason"]
+    out = []
+    files = _iter_question_markdown_files()
+    for f in files:
+        ok = False
+        reason = ""
+        sub_yaml = ""
+        parent = os.path.basename(os.path.dirname(f))
+        sub_final= ""
+        try:
+            with open(f, "r", encoding="utf-8") as h:
+                raw = h.read()
+            meta, body = parse_front_matter(raw)
+            stem, explanation = split_stem_explanation(body)
+            sub_yaml = (meta.get("subject","") or "").strip()
+            sub_final = _canon_topic_from_any(sub_yaml) or _canon_topic_from_any(parent) or ""
+
+            missing = []
+            for k in ["id","correct","A","B","C","D","E"]:
+                if not (meta.get(k,"") or "").strip():
+                    missing.append(k)
+            if not stem.strip():
+                missing.append("stem")
+            if not sub_final:
+                reason = f"Unmappable subject (YAML='{sub_yaml}' parent='{parent}')"
+            elif missing:
+                reason = "Missing fields: " + ", ".join(missing)
+            else:
+                ok = True
+        except Exception as e:
+            reason = f"Parse error: {type(e).__name__}"
+        out.append([f, sub_yaml, parent, sub_final, ok, reason])
+    return pd.DataFrame(out, columns=cols)
 
 # ============================== USER STATE / ANALYTICS ==============================
 def _user_file(pathkey: str) -> str:
@@ -539,7 +583,6 @@ def load_progress() -> Dict[str, Dict]:
     data = _read_json(_user_file("progress"), {})
     for t in topics:
         data.setdefault(t, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
-    # prune unknown topics
     for k in list(data.keys()):
         if k not in topics: data.pop(k, None)
     return data
@@ -656,5 +699,5 @@ def ensure_session_keys():
     st.session_state.setdefault("quiz_revealed", set())
     st.session_state.setdefault("quiz_finished", False)
 
-# Initialize topic dirs in all supported roots (once)
+# Initialize topic folders across roots
 ensure_topic_dirs()
