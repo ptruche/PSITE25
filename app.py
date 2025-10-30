@@ -116,24 +116,18 @@ def view_dashboard():
     acc = overall_accuracy()
     st.metric("Overall Correct", f"{int(round(acc*100))}%")
 
+    # ---- accuracy time series (30d) without matplotlib ----
     series = accuracy_timeseries(days=30)
     if series:
-        dates = [d for d,_,_ in series]
-        accs  = [a for _,a,_ in series]
-        counts= [n for _,_,n in series]
-        import matplotlib.pyplot as plt
-        fig1 = plt.figure()
-        plt.plot(dates, [a*100 for a in accs])
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("% Correct")
-        plt.title("Last 30 days")
-        st.pyplot(fig1, clear_figure=True)
-        fig2 = plt.figure()
-        plt.bar(dates, counts)
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("Questions")
-        plt.title("Attempts per day")
-        st.pyplot(fig2, clear_figure=True)
+        df_ts = pd.DataFrame(series, columns=["date","acc","n"])
+        df_ts["date"] = pd.to_datetime(df_ts["date"])
+        df_ts.set_index("date", inplace=True)
+
+        st.caption("Last 30 days — % correct")
+        st.line_chart(df_ts[["acc"]].rename(columns={"acc":"Percent correct"}).mul(100))
+
+        st.caption("Last 30 days — attempts per day")
+        st.bar_chart(df_ts[["n"]].rename(columns={"n":"Attempts"}))
     else:
         st.info("No attempts yet. Start a quiz to build your trend.")
 
@@ -249,13 +243,12 @@ def view_quiz():
     # stem
     st.markdown(f"<div class='topic-card q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
-    # ---- robust previous choice handling ----
+    # robust previous choice handling
     prev = st.session_state.get("quiz_answers", {}).get(row["id"], None)
     if isinstance(prev, str):
         prev = prev.strip().upper()
     if prev not in letters:
         prev = None
-    # pick an index safely (Streamlit radio index must be int)
     default_idx = letters.index(prev) if prev in letters else 0
 
     choice = st.radio(
@@ -264,9 +257,8 @@ def view_quiz():
         index=default_idx,
         format_func=lambda L: row[L],
         label_visibility="collapsed",
-        key=f"radio_{row['id']}",  # widget persists selection
+        key=f"radio_{row['id']}",
     )
-    # persist answer as clean letter
     st.session_state.quiz_answers[row["id"]] = str(choice).strip().upper()
 
     c1, c2, c3, c4 = st.columns([1,2,2,1])
@@ -294,19 +286,16 @@ def view_quiz():
         # Log attempt ONCE
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
-            from psite_core import record_attempt, sr_update
             record_attempt(row.get("subject",""), row["id"], is_correct)
             if st.session_state.get("quiz_mode") == "spaced":
                 sr_update(row["id"], is_correct)
             st.session_state[key] = True
 
     if st.session_state.quiz_finished:
-        # Only count revealed questions in the score denominator
         revealed_ids = set(st.session_state.quiz_revealed)
         if not revealed_ids:
             st.info("Reveal answers to compute a score.")
             return
-        # Build a dict of correct answers for quick lookup
         correct_map = pool.set_index("id")["correct"].to_dict()
         correct_n = sum(
             1 for qid, ans in st.session_state.quiz_answers.items()
@@ -321,20 +310,15 @@ def view_analytics():
 
     series = accuracy_timeseries(days=60)
     if series:
-        dates = [d for d,_,_ in series]
-        accs  = [a for _,a,_ in series]
-        counts= [n for _,_,n in series]
-        import matplotlib.pyplot as plt
-        fig1 = plt.figure()
-        plt.plot(dates, [a*100 for a in accs])
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("% Correct"); plt.title("Last 60 days (accuracy)")
-        st.pyplot(fig1, clear_figure=True)
-        fig2 = plt.figure()
-        plt.bar(dates, counts)
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("Questions"); plt.title("Attempts per day")
-        st.pyplot(fig2, clear_figure=True)
+        df_ts = pd.DataFrame(series, columns=["date","acc","n"])
+        df_ts["date"] = pd.to_datetime(df_ts["date"])
+        df_ts.set_index("date", inplace=True)
+
+        st.caption("Last 60 days — % correct")
+        st.line_chart(df_ts[["acc"]].rename(columns={"acc":"Percent correct"}).mul(100))
+
+        st.caption("Last 60 days — attempts per day")
+        st.bar_chart(df_ts[["n"]].rename(columns={"n":"Attempts"}))
     else:
         st.info("No attempts yet.")
 
