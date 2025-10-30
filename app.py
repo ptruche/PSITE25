@@ -1,6 +1,8 @@
 # app.py
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
+
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
     auth_is_authed, auth_login_form, auth_logout_button,
@@ -8,15 +10,72 @@ from psite_core import (
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
     accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
-    load_progress, debug_scan_report, question_roots,
+    load_progress, load_history,  # using history for avg/day
+    debug_scan_report, question_roots,
 )
 
-st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide", initial_sidebar_state="expanded")
+# ------------- Page & base theme -------------
+st.set_page_config(
+    page_title="PSITE Mastery",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# ---------------- Header ----------------
+# ------------- Header (fixed, shifted for sidebar) -------------
+st.markdown("""
+<style>
+  :root {
+    --sidebar-w: 300px;         /* keep in sync with psite_core sidebar width */
+    --header-h: 64px;
+    --brand-pad-left: var(--sidebar-w);
+  }
+  /* Brand header never hides under sidebar */
+  .app-header{
+    position:fixed; top:0; left:0; right:0; height:var(--header-h);
+    background:#fff; border-bottom:1px solid #eef0f3; z-index:1000;
+    display:flex; align-items:center;
+  }
+  .app-header-inner{
+    width:100%;
+    padding:0 12px;
+    display:flex; align-items:center; justify-content:space-between;
+    margin-left: var(--brand-pad-left); /* keeps brand clear of sidebar */
+  }
+  .app-brand .app-title{ font-weight:800; font-size:1.08rem; white-space:nowrap; }
+  header{visibility:hidden;height:0!important;}
+  .block-container{ padding-top: calc(var(--header-h) + 12px) !important; }
+
+  /* Cleaner chips/pills */
+  .chip { display:inline-flex; align-items:center; gap:.4rem;
+          padding:.34rem .6rem; border:1px solid #dbe2ea; border-radius:999px;
+          background:#fff; cursor:pointer; font-size:.9rem; }
+  .chip.active { background:#eef4ff; border-color:#cfe0ff; color:#1d4ed8; }
+
+  /* Topic row list */
+  .topic-row-card{
+    border:1px solid #eef0f3; border-radius:14px; padding:.75rem .9rem; background:#fff;
+    display:flex; align-items:center; gap:1rem; justify-content:space-between;
+  }
+  .topic-row-main{ display:flex; align-items:center; gap:1rem; flex:1; min-width:0; }
+  .topic-row-title{ font-weight:600; font-size:.98rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .meter{ width:160px; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
+  .meter>span{ display:block; height:100%; background:#1d4ed8; width:0%; }
+
+  /* Donut cards */
+  .kpi-card { border:1px solid #eef0f3; border-radius:14px; background:#fff; padding:1rem; text-align:center; }
+  .kpi-label { font-size:.9rem; color:#6b7280; margin-top:.4rem; }
+
+  /* Buttons minimal */
+  .pill{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;cursor:pointer;font-size:.85rem;}
+  .pill.secondary{background:#f7f9fc;}
+  .q-prompt { border:1px solid #eef0f3; background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <div class="app-header">
   <div class="app-header-inner">
@@ -26,25 +85,25 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Logout in header
+# Put logout in header’s right side
 rc = st.columns([1,8,1])[0]
 with rc:
     if auth_is_authed():
         auth_logout_button()
 
-# ---------------- Login gate ----------------
+# ------------- Login gate -------------
 if not auth_is_authed():
     st.markdown("#### Welcome")
-    st.caption("Sign in to access your dashboard, topics, analytics, and quizzes.")
+    st.caption("Sign in to access your dashboard, Score Topics, and quizzes.")
     auth_login_form()
     st.stop()
 
-# ---------------- Sidebar ----------------
+# ------------- Sidebar (simplified) -------------
 with st.sidebar:
     st.markdown("### Navigate")
     if st.button("Dashboard", use_container_width=True):
         st.session_state.view = "dashboard"; st.rerun()
-    if st.button("All Topics", use_container_width=True):
+    if st.button("Score Topics", use_container_width=True):
         st.session_state.view = "topics"; st.rerun()
     if st.button("Make Quiz", use_container_width=True):
         st.session_state.view = "make_quiz"; st.rerun()
@@ -60,8 +119,6 @@ with st.sidebar:
         st.session_state.quiz_mode = "spaced"
         st.session_state.view = "quiz"
         st.rerun()
-    if st.button("Analytics", use_container_width=True):
-        st.session_state.view = "analytics"; st.rerun()
 
     st.markdown("---")
     with st.expander("Debug", expanded=False):
@@ -77,112 +134,161 @@ with st.sidebar:
     st.markdown("---")
     auth_logout_button()
 
-# ---------------- Utilities ----------------
-def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
+# ------------- Helpers -------------
+def donut_svg(percent: float, label: str, size: int = 140) -> str:
+    """
+    Render a clean donut with percentage label using pure SVG (no extra deps).
+    """
+    pct = max(0, min(100, int(round(percent))))
+    r = 52
+    cx = cy = size // 2
+    circ = 2 * 3.14159265 * r
+    offset = circ * (1 - pct / 100.0)
+    return f"""
+    <div class="kpi-card">
+      <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" style="display:block;margin:0 auto;">
+        <g transform="translate({cx},{cy})">
+          <circle r="{r}" fill="none" stroke="#f1f5f9" stroke-width="12"></circle>
+          <circle r="{r}" fill="none" stroke="#1d4ed8" stroke-width="12"
+                  stroke-dasharray="{circ:.1f}"
+                  stroke-dashoffset="{offset:.1f}"
+                  transform="rotate(-90)"></circle>
+          <text text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="700">{pct}%</text>
+        </g>
+      </svg>
+      <div class="kpi-label">{label}</div>
+    </div>
+    """
+
+def _avg_per_day_last_7() -> float:
+    hist = load_history()
+    if not hist: return 0.0
+    since = datetime.utcnow() - timedelta(days=7)
+    n = sum(1 for h in hist if datetime.utcfromtimestamp(h.get("ts", 0)) >= since)
+    return round(n / 7.0, 1)
+
+def _total_available_and_done():
+    q_count = questions_count_by_topic()  # dict topic -> total questions
+    prog = load_progress()                # dict topic -> {correct, total, ... attempted count}
+    total_available = sum(q_count.values())
+    total_done = sum(v.get("total", 0) for v in prog.values())
+    total_correct = sum(v.get("correct", 0) for v in prog.values())
+    return total_available, total_done, total_correct
+
+def _category_chips(active: str | None):
+    cats = list(get_category_map().keys())
+    # Default to first category if none yet
+    if not active or active not in cats:
+        active = cats[0] if cats else None
+    cols = st.columns(min(5, max(1, len(cats))))
+    chosen = active
+    for i, c in enumerate(cats):
+        with cols[i % len(cols)]:
+            cls = "chip active" if c == active else "chip"
+            if st.button(c, key=f"cat_{i}", use_container_width=True):
+                chosen = c
+        st.markdown(f"<div class='{cls}' style='display:none'></div>", unsafe_allow_html=True)
+    return chosen
+
+def _render_topic_row(topic: str, q_total_map: dict, progress_map: dict):
     total_q = q_total_map.get(topic, 0)
     attempted = progress_map.get(topic, {}).get("total", 0)
     pct_done = int(100 * attempted / total_q) if total_q else 0
     st.markdown(f"""
-    <div class="topic-card">
-      <div class="topic-title">{topic}</div>
-      <div class="topic-row">
+    <div class="topic-row-card">
+      <div class="topic-row-main">
+        <div class="topic-row-title">{topic}</div>
         <div class="meter"><span style="width:{pct_done}%"></span></div>
-        <div style="width:42px;text-align:right;font-size:.85rem;">{pct_done}%</div>
+        <div style="min-width:48px;text-align:right;font-size:.85rem;">{pct_done}%</div>
+      </div>
+      <div style="display:flex;gap:.5rem;">
+        <form>
+          <button class="pill" type="submit" formaction="?view=review&topic={topic}">Review</button>
+        </form>
+        <form>
+          <button class="pill" type="submit" formaction="?view=make_quiz&topic={topic}">Make Quiz</button>
+        </form>
       </div>
     </div>
     """, unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Review", key=f"rev_{topic}", use_container_width=True):
-            st.session_state.active_topic = topic
-            st.session_state.view = "review"
-            st.rerun()
-    with c2:
-        if st.button("Make Quiz", key=f"quiz_{topic}", use_container_width=True):
-            df = load_questions_for_subjects([topic])
-            st.session_state.active_topic = topic
-            st.session_state.quiz_pool = df.reset_index(drop=True)
-            st.session_state.quiz_idx = 0
-            st.session_state.quiz_answers = {}
-            st.session_state.quiz_revealed = set()
-            st.session_state.quiz_finished = False
-            st.session_state.quiz_mode = "normal"
-            st.session_state.view = "quiz"
-            st.rerun()
 
-# ---------------- Views ----------------
+# ------------- Views -------------
 def view_dashboard():
-    st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-    acc = overall_accuracy()
-    st.metric("Overall Correct", f"{int(round(acc*100))}%")
+    st.markdown("### Dashboard")
 
-    # ---- accuracy time series (30d) without matplotlib ----
-    series = accuracy_timeseries(days=30)
-    if series:
-        df_ts = pd.DataFrame(series, columns=["date","acc","n"])
-        df_ts["date"] = pd.to_datetime(df_ts["date"])
-        df_ts.set_index("date", inplace=True)
+    total_available, total_done, total_correct = _total_available_and_done()
+    pct_completed = (100 * total_done / total_available) if total_available else 0.0
+    pct_correct = (100 * total_correct / total_done) if total_done else 0.0
+    avg_per_day = _avg_per_day_last_7()
 
-        st.caption("Last 30 days — % correct")
-        st.line_chart(df_ts[["acc"]].rename(columns={"acc":"Percent correct"}).mul(100))
+    c1, c2, c3 = st.columns(3)
+    with c1: st.markdown(donut_svg(pct_completed, "All questions completed"), unsafe_allow_html=True)
+    with c2: st.markdown(donut_svg(pct_correct, "Correct among completed"), unsafe_allow_html=True)
+    with c3:
+        st.markdown("""
+        <div class="kpi-card">
+          <div style="font-size:2rem;font-weight:800;">{avg}/day</div>
+          <div class="kpi-label">7-day average</div>
+        </div>
+        """.format(avg=f"{avg_per_day:.1f}"), unsafe_allow_html=True)
 
-        st.caption("Last 30 days — attempts per day")
-        st.bar_chart(df_ts[["n"]].rename(columns={"n":"Attempts"}))
-    else:
-        st.info("No attempts yet. Start a quiz to build your trend.")
-
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-
-    strong, weak = topic_strengths(k=5)
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Strongest topics**")
-        if not strong: st.caption("—")
-        for t, a, n in strong:
-            st.write(f"{t} — {int(a*100)}% ({n} q)")
-    with c2:
-        st.markdown("**Weakest topics**")
-        if not weak: st.caption("—")
+    # Quick “What to do next”
+    st.markdown("---")
+    st.markdown("**Next steps**")
+    strong, weak = topic_strengths(k=3)
+    if weak:
+        st.write("• Focus next on your weakest topics:")
         for t, a, n in weak:
-            st.write(f"{t} — {int(a*100)}% ({n} q)")
+            st.write(f"  – {t}: {int(a*100)}% over {n} questions")
+    else:
+        st.write("• Start a quiz to build performance data.")
 
 def view_topics():
-    st.markdown("<div class='section-title'>All Topics</div>", unsafe_allow_html=True)
+    st.markdown("### Score Topics")
+
+    # Left rail: category selection + search; Right: topic rows of that category
+    left, right = st.columns([1,2], gap="large")
+
     cats = get_category_map()
     q_count = questions_count_by_topic()
     prog = load_progress()
 
-    s1, s2 = st.columns([2,1])
-    with s1:
-        q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
-    with s2:
-        cat_names = ["All"] + list(cats.keys())
-        choose = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
+    with left:
+        st.caption("Category")
+        active_cat = st.session_state.get("active_cat")
+        active_cat = _category_chips(active_cat)
+        st.session_state.active_cat = active_cat
+        st.caption("Search")
+        q = st.text_input("Search", placeholder="Search topics", label_visibility="collapsed").strip().lower()
 
-    topics = []
-    for cat, arr in cats.items():
-        if choose != "All" and cat != choose: continue
-        for t in arr:
-            if q and q not in t.lower(): continue
-            topics.append(t)
+    with right:
+        topics = []
+        if active_cat and active_cat in cats:
+            for t in cats[active_cat]:
+                if q and q not in t.lower(): continue
+                topics.append(t)
 
-    if not topics:
-        st.info("No topics match your filter.")
-        return
+        if not topics:
+            st.info("No topics match your filter.")
+            return
 
-    cols = st.columns(3)
-    i = 0
-    for t in topics:
-        with cols[i % 3]:
-            _render_topic_card(t, q_count, prog)
-        i += 1
+        # Compact, elegant list
+        for t in topics:
+            _render_topic_row(t, q_count, prog)
+            st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
 
 def view_review():
+    # Query param support for "Review" click-through
+    qp = st.query_params
+    topic_from_qp = qp.get("topic", None)
+    if topic_from_qp:
+        st.session_state.active_topic = topic_from_qp
+
     topic = st.session_state.get("active_topic") or ""
     if not topic:
-        st.info("Choose a topic from All Topics.")
+        st.info("Choose a topic from Score Topics.")
         return
-    st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
+    st.markdown(f"### {topic}")
     p = resolve_review_path(topic)
     if not p:
         st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named by topic slug.")
@@ -191,7 +297,7 @@ def view_review():
         txt = f.read()
     st.markdown(txt, unsafe_allow_html=True)
 
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    st.markdown("---")
     if st.button("Quiz this topic ▶"):
         df = load_questions_for_subjects([topic])
         st.session_state.quiz_pool = df.reset_index(drop=True)
@@ -204,9 +310,14 @@ def view_review():
         st.rerun()
 
 def view_make_quiz():
-    st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
+    # Query param support for "Make Quiz" click-through
+    qp = st.query_params
+    pre_topic = qp.get("topic", None)
+
+    st.markdown("### Make a Quiz")
     topics = ["Any"] + get_topics()
-    pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
+    default = [pre_topic] if pre_topic in get_topics() else []
+    pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=default)
     n = st.number_input("Number of questions", 5, 100, 20, step=5)
     if st.button("Start ▶", use_container_width=True):
         if pick and "Any" in pick: pick = []
@@ -241,7 +352,7 @@ def view_quiz():
     st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
     # stem
-    st.markdown(f"<div class='topic-card q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
     # robust previous choice handling
     prev = st.session_state.get("quiz_answers", {}).get(row["id"], None)
@@ -292,6 +403,7 @@ def view_quiz():
             st.session_state[key] = True
 
     if st.session_state.quiz_finished:
+        # Only count revealed questions in the score denominator
         revealed_ids = set(st.session_state.quiz_revealed)
         if not revealed_ids:
             st.info("Reveal answers to compute a score.")
@@ -303,50 +415,22 @@ def view_quiz():
         )
         st.success(f"Score: {correct_n}/{len(revealed_ids)}")
 
-def view_analytics():
-    st.markdown("<div class='section-title'>Analytics</div>", unsafe_allow_html=True)
-    acc = overall_accuracy()
-    st.metric("Overall Correct", f"{int(round(acc*100))}%")
-
-    series = accuracy_timeseries(days=60)
-    if series:
-        df_ts = pd.DataFrame(series, columns=["date","acc","n"])
-        df_ts["date"] = pd.to_datetime(df_ts["date"])
-        df_ts.set_index("date", inplace=True)
-
-        st.caption("Last 60 days — % correct")
-        st.line_chart(df_ts[["acc"]].rename(columns={"acc":"Percent correct"}).mul(100))
-
-        st.caption("Last 60 days — attempts per day")
-        st.bar_chart(df_ts[["n"]].rename(columns={"n":"Attempts"}))
-    else:
-        st.info("No attempts yet.")
-
-    prog = load_progress()
-    q_count = questions_count_by_topic()
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    st.markdown("**Topic Completion**")
-    rows = []
-    for t in get_topics():
-        attempted = prog.get(t,{}).get("total",0)
-        total_q = q_count.get(t,0)
-        pct = int(100*attempted/total_q) if total_q else 0
-        acc_t = int(100* (prog.get(t,{}).get("correct",0) / attempted) ) if attempted else 0
-        rows.append((t, f"{pct}%", f"{acc_t}%", attempted, total_q))
-    dfv = pd.DataFrame(rows, columns=["Topic","% Done","% Correct","Attempted","Total Q"])
-    st.dataframe(dfv, use_container_width=True, hide_index=True)
-
-# ---------------- Router ----------------
+# ------------- Router -------------
 view = st.session_state.get("view", "dashboard")
-if view == "topics":
+# Allow query-param navigation for Review/Make Quiz buttons
+qp = st.query_params
+if "view" in qp:
+    st.session_state.view = qp.get("view")
+    # consume the qp (optional)
+    # st.query_params.clear()
+
+if st.session_state.view == "topics":
     view_topics()
-elif view == "review":
+elif st.session_state.view == "review":
     view_review()
-elif view == "make_quiz":
+elif st.session_state.view == "make_quiz":
     view_make_quiz()
-elif view == "quiz":
+elif st.session_state.view == "quiz":
     view_quiz()
-elif view == "analytics":
-    view_analytics()
 else:
     view_dashboard()
