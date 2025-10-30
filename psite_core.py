@@ -17,29 +17,23 @@ BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR      = os.path.join(BASE_DIR, "data")
 QUESTIONS_DIR = os.path.join(DATA_DIR, "questions")
 REVIEWS_DIR   = os.path.join(DATA_DIR, "reviews")
-# For repos that put questions under reviews:
-REVIEWS_QUESTIONS_DIR = os.path.join(REVIEWS_DIR, "questions")
 
-# Optional pages/ mirrors (supported but not required)
+# Optional mirrors (supported but not required)
 PAGES_DATA_DIR              = os.path.join(BASE_DIR, "pages", "data")
 PAGES_QUESTIONS_DIR         = os.path.join(PAGES_DATA_DIR, "questions")
 PAGES_REVIEWS_DIR           = os.path.join(PAGES_DATA_DIR, "reviews")
-PAGES_REVIEWS_QUESTIONS_DIR = os.path.join(PAGES_REVIEWS_DIR, "questions")
 
 STATE_DIR   = os.path.join(DATA_DIR, "state")
 USERS_JSON  = os.path.join(STATE_DIR, "users.json")
 SECRET_FILE = os.path.join(STATE_DIR, "secret.key")
 THEME_CSS   = os.path.join(BASE_DIR, "theme.css")
 
-for p in [
-    DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR,
-    REVIEWS_QUESTIONS_DIR,
-    PAGES_DATA_DIR, PAGES_QUESTIONS_DIR, PAGES_REVIEWS_DIR, PAGES_REVIEWS_QUESTIONS_DIR
-]:
+for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR,
+          PAGES_DATA_DIR, PAGES_QUESTIONS_DIR, PAGES_REVIEWS_DIR]:
     try: os.makedirs(p, exist_ok=True)
     except Exception: pass
 
-# Ensure subfolders for each topic (created in all question roots)
+# Ensure subfolders for each topic (created in question roots)
 CREATE_TOPIC_DIRS = True
 
 # ============================== THEME ==============================
@@ -49,9 +43,11 @@ def apply_base_theme():
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     st.markdown("""
     <style>
+      /* Sidebar width and hide native nav */
       [data-testid="stSidebar"] { min-width: 300px !important; width: 300px !important; }
       [data-testid="stSidebarNav"] { display:none !important; }
       :root { --header-h: 64px; --accent:#1d4ed8; --border:#eef0f3; }
+      /* Fixed app header to prevent top clipping */
       .app-header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:#fff;
         border-bottom:1px solid var(--border);z-index:1000;display:flex;align-items:center;}
       .app-header-inner{max-width:1200px;margin:0 auto;width:100%;padding:0 12px;
@@ -59,6 +55,7 @@ def apply_base_theme():
       .app-title{font-weight:800;font-size:1.08rem;}
       header{visibility:hidden;height:0!important;}
       .block-container{padding-top:calc(var(--header-h) + 12px)!important;}
+      /* UI atoms */
       .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
       .divider{height:1px;background:var(--border);margin:1rem 0;}
       .topic-card{border:1px solid var(--border);border-radius:14px;background:#fff;padding:.75rem;
@@ -380,13 +377,16 @@ TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
 SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
 
 def _canon_topic_from_any(name_or_slug: str) -> Optional[str]:
-    """
-    Accept a human topic name or a slug-ish string; return canonical SCORE topic by slug.
-    """
+    """Accept a human topic name or a slug-ish string; return canonical SCORE topic by slug."""
     if not name_or_slug:
         return None
     s = slugify(name_or_slug)
     return SLUG_TO_TOPIC.get(s)
+
+def question_roots() -> List[str]:
+    """All directories we scan recursively for questions."""
+    roots = [QUESTIONS_DIR, PAGES_QUESTIONS_DIR]
+    return [r for r in roots if os.path.isdir(r)]
 
 def ensure_topic_dirs():
     """Create topic subfolders in all supported question roots so users can drop files easily."""
@@ -418,16 +418,6 @@ def parse_front_matter(text: str) -> Tuple[Dict, str]:
 def split_stem_explanation(body: str) -> Tuple[str, str]:
     parts = EXPL_SPLIT_RE.split(body, maxsplit=1)
     return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else (body.strip(), "")
-
-def question_roots() -> List[str]:
-    """All directories we scan recursively for questions."""
-    roots = [
-        QUESTIONS_DIR,
-        REVIEWS_QUESTIONS_DIR,          # e.g., data/reviews/questions/<topic>/*.md
-        PAGES_QUESTIONS_DIR,
-        PAGES_REVIEWS_QUESTIONS_DIR,
-    ]
-    return [r for r in roots if os.path.isdir(r)]
 
 def _iter_question_markdown_files() -> List[str]:
     files: List[str] = []
@@ -474,7 +464,6 @@ def load_questions_frame() -> pd.DataFrame:
                 continue  # skip malformed/missing essentials
 
             rows.append(rec)
-
         except Exception:
             continue  # skip unreadable files
 
@@ -503,7 +492,7 @@ def resolve_review_path(topic: str) -> Optional[str]:
     Find a review markdown for a topic by slug in:
       - data/reviews/<slug>.md
       - pages/data/reviews/<slug>.md
-      Also accept files that start with the slug (e.g., bronchoscopy_v2.md)
+      (Also accept files that start with the slug, e.g., bronchoscopy_v2.md)
     """
     slug = TOPIC_TO_SLUG.get(topic, slugify(topic))
     candidates = [
@@ -526,7 +515,7 @@ def questions_count_by_topic() -> Dict[str, int]:
     if df.empty: return {t:0 for t in get_topics()}
     return df.groupby("subject")["id"].nunique().to_dict()
 
-# -------------- Debug scan (optional; useful while organizing your repo) --------------
+# -------------- Debug scan --------------
 def debug_scan_report() -> pd.DataFrame:
     """
     Per-file diagnostic: shows YAML subject, inferred subject, final mapped subject,
