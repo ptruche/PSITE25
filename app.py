@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
@@ -11,10 +10,9 @@ from psite_core import (
     questions_count_by_topic, record_attempt, overall_accuracy,
     accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
     load_progress, load_history,
-    debug_scan_report, question_roots,
 )
 
-# ------------- Page & base theme -------------
+# ---------------- Page & Theme ----------------
 st.set_page_config(
     page_title="PSITE Mastery",
     page_icon=None,
@@ -25,11 +23,11 @@ apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# ------------- Header (fixed, padded for sidebar) -------------
+# ---------------- Fixed Header (brand only) ----------------
 st.markdown("""
 <style>
   :root {
-    --sidebar-w: 300px;         /* keep in sync with psite_core sidebar width */
+    --sidebar-w: 300px;   /* keep in sync with psite_core sidebar width */
     --header-h: 64px;
     --brand-pad-left: var(--sidebar-w);
   }
@@ -41,7 +39,7 @@ st.markdown("""
   .app-header-inner{
     width:100%;
     padding:0 12px;
-    display:flex; align-items:center; justify-content:space-between;
+    display:flex; align-items:center; justify-content:flex-start;
     margin-left: var(--brand-pad-left); /* keeps brand clear of sidebar */
   }
   .app-brand .app-title{ font-weight:800; font-size:1.08rem; white-space:nowrap; }
@@ -80,31 +78,22 @@ st.markdown("""
   .pill.secondary{background:#f7f9fc;}
   .q-prompt { border:1px solid #eef0f3; background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
 </style>
-""", unsafe_allow_html=True)
 
-st.markdown("""
 <div class="app-header">
   <div class="app-header-inner">
     <div class="app-brand"><div class="app-title">PSITE Mastery</div></div>
-    <div id="logout-slot"></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Put logout in header’s right side
-rc = st.columns([1,8,1])[0]
-with rc:
-    if auth_is_authed():
-        auth_logout_button()
-
-# ------------- Login gate -------------
+# ---------------- Login Gate ----------------
 if not auth_is_authed():
     st.markdown("#### Welcome")
     st.caption("Sign in to access your dashboard, Score Topics, and quizzes.")
     auth_login_form()
     st.stop()
 
-# ------------- Sidebar -------------
+# ---------------- Sidebar ----------------
 with st.sidebar:
     st.markdown("### Navigate")
     if st.button("Dashboard", use_container_width=True):
@@ -125,22 +114,10 @@ with st.sidebar:
         st.session_state.quiz_mode = "spaced"
         st.session_state.view = "quiz"
         st.rerun()
-
-    st.markdown("---")
-    with st.expander("Debug", expanded=False):
-        st.caption("Question roots scanned:")
-        for r in question_roots():
-            st.code(r)
-        df_dbg = debug_scan_report()
-        if df_dbg.empty:
-            st.info("No .md files discovered under the scanned roots.")
-        else:
-            st.dataframe(df_dbg, use_container_width=True, hide_index=True)
-
     st.markdown("---")
     auth_logout_button()
 
-# ------------- Helpers -------------
+# ---------------- Helpers ----------------
 def donut_svg(percent: float, label: str, size: int = 140) -> str:
     pct = max(0, min(100, int(round(percent))))
     r = 52
@@ -204,19 +181,15 @@ def _category_chipbar_top(active: str | None):
     cats = list(get_category_map().keys())
     if not cats:
         return None
-    # Default active category (persist across clicks)
     if not active or active not in cats:
         active = cats[0]
-
-    # Render chips as a row (wrapping)
+    # Render as button row (styled via CSS to look like chips)
     st.markdown("<div class='chipbar'>", unsafe_allow_html=True)
     cols = st.columns(min(6, max(1, len(cats))))
     chosen = active
     for i, c in enumerate(cats):
         with cols[i % len(cols)]:
-            # Use a Streamlit button for state change; style with CSS chips look
             clicked = st.button(c, key=f"cat_{i}", use_container_width=True)
-            # Markup mirror for visual styling (keeps consistent look)
             cls = "chip active" if c == active else "chip"
             st.markdown(f"<div class='{cls}' style='display:none'>{c}</div>", unsafe_allow_html=True)
             if clicked:
@@ -224,10 +197,9 @@ def _category_chipbar_top(active: str | None):
     st.markdown("</div>", unsafe_allow_html=True)
     return chosen
 
-# ------------- Views -------------
+# ---------------- Views ----------------
 def view_dashboard():
     st.markdown("### Dashboard")
-
     total_available, total_done, total_correct = _total_available_and_done()
     pct_completed = (100 * total_done / total_available) if total_available else 0.0
     pct_correct = (100 * total_correct / total_done) if total_done else 0.0
@@ -237,40 +209,27 @@ def view_dashboard():
     with c1: st.markdown(donut_svg(pct_completed, "All questions completed"), unsafe_allow_html=True)
     with c2: st.markdown(donut_svg(pct_correct, "Correct among completed"), unsafe_allow_html=True)
     with c3:
-        st.markdown("""
+        st.markdown(f"""
         <div class="kpi-card">
-          <div style="font-size:2rem;font-weight:800;">{avg}/day</div>
+          <div style="font-size:2rem;font-weight:800;">{avg_per_day:.1f}/day</div>
           <div class="kpi-label">7-day average</div>
         </div>
-        """.format(avg=f"{avg_per_day:.1f}"), unsafe_allow_html=True)
-
-    # Simple “what to do next”
-    st.markdown("---")
-    st.markdown("**Next steps**")
-    strong, weak = topic_strengths(k=3)
-    if weak:
-        st.write("• Focus next on your weakest topics:")
-        for t, a, n in weak:
-            st.write(f"  – {t}: {int(a*100)}% over {n} questions")
-    else:
-        st.write("• Start a quiz to build performance data.")
+        """, unsafe_allow_html=True)
 
 def view_topics():
     st.markdown("### Score Topics")
-
     cats = get_category_map()
     q_count = questions_count_by_topic()
     prog = load_progress()
 
-    # Category header at top (chips)
+    # Category header at top
     active_cat = st.session_state.get("active_cat")
     active_cat = _category_chipbar_top(active_cat)
     st.session_state.active_cat = active_cat
 
-    # Search just under chips
+    # Search below chips
     q = st.text_input("Search topics", placeholder="Search…").strip().lower()
 
-    # Topic list (single column, clean rows)
     topics = []
     if active_cat and active_cat in cats:
         for t in cats[active_cat]:
@@ -344,7 +303,7 @@ def view_quiz():
         if st.session_state.get("quiz_mode") == "spaced":
             st.success("✅ No spaced-repetition items due.")
         else:
-            st.info("No questions found. Add `.md` files under the question roots shown in Debug.")
+            st.info("No questions found. Add `.md` files under data/questions/<topic-slug>/")
         return
 
     i = st.session_state.get("quiz_idx", 0)
@@ -359,10 +318,7 @@ def view_quiz():
     st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
     prev = st.session_state.get("quiz_answers", {}).get(row["id"], None)
-    if isinstance(prev, str):
-        prev = prev.strip().upper()
-    if prev not in letters:
-        prev = None
+    if isinstance(prev, str): prev = prev.strip().upper()
     default_idx = letters.index(prev) if prev in letters else 0
 
     choice = st.radio(
@@ -395,8 +351,7 @@ def view_quiz():
         verdict_text = "Correct" if is_correct else "Incorrect"
         st.markdown(f"<span class='{verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
         exp = (row.get("explanation") or "").strip()
-        if exp:
-            st.markdown(exp, unsafe_allow_html=True)
+        if exp: st.markdown(exp, unsafe_allow_html=True)
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
             record_attempt(row.get("subject",""), row["id"], is_correct)
@@ -416,7 +371,7 @@ def view_quiz():
         )
         st.success(f"Score: {correct_n}/{len(revealed_ids)}")
 
-# ------------- Router -------------
+# ---------------- Router ----------------
 view = st.session_state.get("view", "dashboard")
 qp = st.query_params
 if "view" in qp:
