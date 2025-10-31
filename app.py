@@ -1,18 +1,19 @@
+# app.py
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import streamlit.components.v1 as components
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
     auth_is_authed, auth_login_form, auth_logout_button,
     get_category_map, get_topics, resolve_review_path,
     load_questions_for_subjects, load_questions_frame,
-    questions_count_by_topic, record_attempt, overall_accuracy,
-    accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
-    load_progress, load_history,
+    questions_count_by_topic, record_attempt,
+    sr_due_ids, sr_update, load_progress, load_history,
 )
 
-# ---------------- Page & Theme ----------------
+# =================== PAGE SETUP ===================
 st.set_page_config(
     page_title="PSITE Mastery",
     page_icon=None,
@@ -23,14 +24,15 @@ apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# ---------------- Fixed Header (brand only) ----------------
+# =================== HEADER (adaptive to sidebar width) ===================
 st.markdown("""
 <style>
   :root {
-    --sidebar-w: 300px;   /* keep in sync with psite_core sidebar width */
-    --header-h: 64px;
+    --sidebar-w: 300px;
     --brand-pad-left: var(--sidebar-w);
+    --header-h: 64px;
   }
+
   .app-header{
     position:fixed; top:0; left:0; right:0; height:var(--header-h);
     background:#fff; border-bottom:1px solid #eef0f3; z-index:1000;
@@ -40,40 +42,29 @@ st.markdown("""
     width:100%;
     padding:0 12px;
     display:flex; align-items:center; justify-content:flex-start;
-    margin-left: var(--brand-pad-left); /* keeps brand clear of sidebar */
+    margin-left: var(--brand-pad-left);
+    transition: margin-left .18s ease;
   }
   .app-brand .app-title{ font-weight:800; font-size:1.08rem; white-space:nowrap; }
+
+  /* Hide Streamlit default header; add space for fixed header */
   header{visibility:hidden;height:0!important;}
   .block-container{ padding-top: calc(var(--header-h) + 12px) !important; }
 
-  /* Chips / category header */
-  .chipbar {
-    display:flex; gap:.5rem; flex-wrap:wrap;
-    align-items:center; margin:.25rem 0 .75rem 0;
-  }
-  .chip {
-    display:inline-flex; align-items:center; gap:.4rem;
-    padding:.34rem .6rem; border:1px solid #dbe2ea; border-radius:999px;
-    background:#fff; cursor:pointer; font-size:.9rem;
-    max-width: 100%; white-space: nowrap;
-  }
+  /* Chips / topics / KPI / quiz styling */
+  .chipbar { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.25rem 0 .75rem 0; }
+  .chip { display:inline-flex; align-items:center; gap:.4rem; padding:.34rem .6rem; border:1px solid #dbe2ea; border-radius:999px; background:#fff; cursor:pointer; font-size:.9rem; max-width: 100%; white-space: nowrap; }
   .chip.active { background:#eef4ff; border-color:#cfe0ff; color:#1d4ed8; }
 
-  /* Topic list rows */
-  .topic-row-card{
-    border:1px solid #eef0f3; border-radius:14px; padding:.75rem .9rem; background:#fff;
-    display:flex; align-items:center; gap:1rem; justify-content:space-between;
-  }
+  .topic-row-card{ border:1px solid #eef0f3; border-radius:14px; padding:.75rem .9rem; background:#fff; display:flex; align-items:center; gap:1rem; justify-content:space-between; }
   .topic-row-main{ display:flex; align-items:center; gap:1rem; flex:1; min-width:0; }
   .topic-row-title{ font-weight:600; font-size:.98rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .meter{ width:200px; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
   .meter>span{ display:block; height:100%; background:#1d4ed8; width:0%; }
 
-  /* KPI donuts */
   .kpi-card { border:1px solid #eef0f3; border-radius:14px; background:#fff; padding:1rem; text-align:center; }
   .kpi-label { font-size:.9rem; color:#6b7280; margin-top:.4rem; }
 
-  /* Quiz bits */
   .pill{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;cursor:pointer;font-size:.85rem;}
   .pill.secondary{background:#f7f9fc;}
   .q-prompt { border:1px solid #eef0f3; background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
@@ -86,14 +77,50 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ---------------- Login Gate ----------------
+def _watch_sidebar_width():
+    components.html("""
+    <script>
+      (function(){
+        function setPad(px){
+          try {
+            document.documentElement.style.setProperty('--brand-pad-left', px + 'px');
+          } catch(e){}
+        }
+        function readSidebarWidth(){
+          const sb = parent.document.querySelector('[data-testid="stSidebar"]');
+          if (!sb) { setPad(0); return; }
+          const rect = sb.getBoundingClientRect();
+          setPad(rect.width || 0);
+        }
+        // Initial + observers
+        readSidebarWidth();
+        const sb = parent.document.querySelector('[data-testid="stSidebar"]');
+        if (sb && 'ResizeObserver' in window) {
+          const ro = new ResizeObserver(()=>readSidebarWidth());
+          ro.observe(sb);
+        }
+        window.addEventListener('resize', readSidebarWidth);
+        // brief polling fallback
+        let ticks = 0;
+        const id = setInterval(()=>{
+          readSidebarWidth();
+          ticks++;
+          if (ticks > 40) clearInterval(id);
+        }, 250);
+      })();
+    </script>
+    """, height=0)
+
+_watch_sidebar_width()
+
+# =================== AUTH GATE ===================
 if not auth_is_authed():
     st.markdown("#### Welcome")
     st.caption("Sign in to access your dashboard, Score Topics, and quizzes.")
     auth_login_form()
     st.stop()
 
-# ---------------- Sidebar ----------------
+# =================== SIDEBAR ===================
 with st.sidebar:
     st.markdown("### Navigate")
     if st.button("Dashboard", use_container_width=True):
@@ -117,7 +144,7 @@ with st.sidebar:
     st.markdown("---")
     auth_logout_button()
 
-# ---------------- Helpers ----------------
+# =================== HELPERS ===================
 def donut_svg(percent: float, label: str, size: int = 140) -> str:
     pct = max(0, min(100, int(round(percent))))
     r = 52
@@ -171,7 +198,7 @@ def _render_topic_row(topic: str, q_total_map: dict, progress_map: dict):
           <button class="pill" type="submit" formaction="?view=review&topic={topic}">Review</button>
         </form>
         <form>
-          <button class="pill" type="submit" formaction="?view=make_quiz&topic={topic}">Make Quiz</button>
+          <button class="pill" type="submit" formaction="?view=make_quiz&topic={topic}">Quiz</button>
         </form>
       </div>
     </div>
@@ -179,35 +206,28 @@ def _render_topic_row(topic: str, q_total_map: dict, progress_map: dict):
 
 def _category_chipbar_top(active: str | None):
     cats = list(get_category_map().keys())
-    if not cats:
-        return None
-    if not active or active not in cats:
-        active = cats[0]
-    # Render as button row (styled via CSS to look like chips)
+    if not cats: return None
+    if not active or active not in cats: active = cats[0]
     st.markdown("<div class='chipbar'>", unsafe_allow_html=True)
     cols = st.columns(min(6, max(1, len(cats))))
     chosen = active
     for i, c in enumerate(cats):
         with cols[i % len(cols)]:
             clicked = st.button(c, key=f"cat_{i}", use_container_width=True)
-            cls = "chip active" if c == active else "chip"
-            st.markdown(f"<div class='{cls}' style='display:none'>{c}</div>", unsafe_allow_html=True)
-            if clicked:
-                chosen = c
+            if clicked: chosen = c
     st.markdown("</div>", unsafe_allow_html=True)
     return chosen
 
-# ---------------- Views ----------------
+# =================== VIEWS ===================
 def view_dashboard():
     st.markdown("### Dashboard")
     total_available, total_done, total_correct = _total_available_and_done()
     pct_completed = (100 * total_done / total_available) if total_available else 0.0
     pct_correct = (100 * total_correct / total_done) if total_done else 0.0
     avg_per_day = _avg_per_day_last_7()
-
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(donut_svg(pct_completed, "All questions completed"), unsafe_allow_html=True)
-    with c2: st.markdown(donut_svg(pct_correct, "Correct among completed"), unsafe_allow_html=True)
+    with c1: st.markdown(donut_svg(pct_completed, "Completed"), unsafe_allow_html=True)
+    with c2: st.markdown(donut_svg(pct_correct, "Correct"), unsafe_allow_html=True)
     with c3:
         st.markdown(f"""
         <div class="kpi-card">
@@ -221,25 +241,19 @@ def view_topics():
     cats = get_category_map()
     q_count = questions_count_by_topic()
     prog = load_progress()
-
-    # Category header at top
     active_cat = st.session_state.get("active_cat")
     active_cat = _category_chipbar_top(active_cat)
     st.session_state.active_cat = active_cat
 
-    # Search below chips
     q = st.text_input("Search topics", placeholder="Search…").strip().lower()
-
     topics = []
     if active_cat and active_cat in cats:
         for t in cats[active_cat]:
             if q and q not in t.lower(): continue
             topics.append(t)
-
     if not topics:
         st.info("No topics match your filter.")
         return
-
     for t in topics:
         _render_topic_row(t, q_count, prog)
         st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
@@ -247,9 +261,7 @@ def view_topics():
 def view_review():
     qp = st.query_params
     topic_from_qp = qp.get("topic", None)
-    if topic_from_qp:
-        st.session_state.active_topic = topic_from_qp
-
+    if topic_from_qp: st.session_state.active_topic = topic_from_qp
     topic = st.session_state.get("active_topic") or ""
     if not topic:
         st.info("Choose a topic from Score Topics.")
@@ -257,12 +269,10 @@ def view_review():
     st.markdown(f"### {topic}")
     p = resolve_review_path(topic)
     if not p:
-        st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named by topic slug.")
+        st.info("No review uploaded yet. Place a `.md` file in `data/reviews/`.")
         return
     with open(p, "r", encoding="utf-8") as f:
-        txt = f.read()
-    st.markdown(txt, unsafe_allow_html=True)
-
+        st.markdown(f.read(), unsafe_allow_html=True)
     st.markdown("---")
     if st.button("Quiz this topic ▶"):
         df = load_questions_for_subjects([topic])
@@ -278,7 +288,6 @@ def view_review():
 def view_make_quiz():
     qp = st.query_params
     pre_topic = qp.get("topic", None)
-
     st.markdown("### Make a Quiz")
     topics = ["Any"] + get_topics()
     default = [pre_topic] if pre_topic in get_topics() else []
@@ -303,7 +312,7 @@ def view_quiz():
         if st.session_state.get("quiz_mode") == "spaced":
             st.success("✅ No spaced-repetition items due.")
         else:
-            st.info("No questions found. Add `.md` files under data/questions/<topic-slug>/")
+            st.info("No questions found. Add `.md` files under data/questions/<topic>/")
         return
 
     i = st.session_state.get("quiz_idx", 0)
@@ -322,12 +331,10 @@ def view_quiz():
     default_idx = letters.index(prev) if prev in letters else 0
 
     choice = st.radio(
-        label="",
-        options=letters,
-        index=default_idx,
+        "", letters, index=default_idx,
         format_func=lambda L: row[L],
         label_visibility="collapsed",
-        key=f"radio_{row['id']}",
+        key=f"radio_{row['id']}"
     )
     st.session_state.quiz_answers[row["id"]] = str(choice).strip().upper()
 
@@ -351,7 +358,10 @@ def view_quiz():
         verdict_text = "Correct" if is_correct else "Incorrect"
         st.markdown(f"<span class='{verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
         exp = (row.get("explanation") or "").strip()
-        if exp: st.markdown(exp, unsafe_allow_html=True)
+        if exp:
+            st.markdown(exp, unsafe_allow_html=True)
+
+        # Log attempt once
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
             record_attempt(row.get("subject",""), row["id"], is_correct)
@@ -371,10 +381,11 @@ def view_quiz():
         )
         st.success(f"Score: {correct_n}/{len(revealed_ids)}")
 
-# ---------------- Router ----------------
+# =================== ROUTER ===================
 view = st.session_state.get("view", "dashboard")
 qp = st.query_params
 if "view" in qp:
+    # Allow simple navigation via query param (used by Review/Quiz buttons)
     st.session_state.view = qp.get("view")
 
 if st.session_state.view == "topics":
