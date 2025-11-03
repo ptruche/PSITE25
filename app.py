@@ -1,7 +1,7 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components
+from typing import Dict
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
@@ -10,47 +10,84 @@ from psite_core import (
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
     accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
-    load_progress, topic_to_slug, slug_to_topic, get_review_word_count,
+    load_progress, slugify
 )
 
+# ============ App Shell / Theme ============
 st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide", initial_sidebar_state="expanded")
 apply_base_theme()
+
+# IMPORTANT: initialize session + restore token BEFORE auth gate
 ensure_session_keys()
 try_auto_login_persisted()
 
-# ------------------ Header ------------------
-st.markdown("""
-<div class="app-header">
-  <div class="app-header-inner">
-    <div class="app-brand"><div class="app-title">PSITE Mastery</div></div>
-    <div></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+# ============ Small helpers (UI) ============
+def _hstack(*cols):
+    return st.columns(cols)
 
-# ------------------ Auth Gate ------------------
-if not auth_is_authed():
-    st.markdown("#### Welcome")
-    st.caption("Sign in to access your dashboard, topics, and quizzes.")
-    auth_login_form()
-    st.stop()
+def _pct_int(x):
+    try: return int(round(float(x)*100))
+    except Exception: return 0
 
-# ------------------ Action Router via query params (for HTML buttons) ------------------
-def _consume_action_query():
-    qp = dict(st.query_params)
-    action = qp.get("action")
-    slug = qp.get("topic")
-    if action and slug:
-        topic = slug_to_topic(slug)
-        # Clear action so we don't loop
-        st.query_params.clear()
-        if not topic:
-            return
-        if action == "review":
+def _review_word_count(topic: str) -> int:
+    """Return word count of the review markdown for topic (0 if none)."""
+    p = resolve_review_path(topic)
+    if not p:
+        return 0
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            txt = f.read()
+        # very simple word count
+        return len(txt.split())
+    except Exception:
+        return 0
+
+def _topic_card(topic: str, q_total_map: Dict[str, int], progress_map: Dict[str, Dict]):
+    """Single bubble with title, progress meter, and two small buttons."""
+    total_q = q_total_map.get(topic, 0)
+    attempted = progress_map.get(topic, {}).get("total", 0)
+    pct_done = int(100 * attempted / total_q) if total_q else 0
+
+    # Button styles based on availability
+    rev_words = _review_word_count(topic)
+    has_good_review = rev_words >= 250
+    has_enough_q = total_q >= 5
+
+    rev_button_style = (
+        "background:#10b981; color:#fff; border:1px solid #0ea56f;"
+        if has_good_review else
+        "background:#fff; color:#111; border:1px solid #dbe2ea;"
+    )
+    quiz_button_style = (
+        "background:#10b981; color:#fff; border:1px solid #0ea56f;"
+        if has_enough_q else
+        "background:#fff; color:#111; border:1px solid #dbe2ea;"
+    )
+
+    slug = slugify(topic)
+    st.markdown(f"""
+    <div class="topic-card" style="gap:.55rem;">
+      <div class="topic-title">{topic}</div>
+      <div class="topic-row">
+        <div class="meter"><span style="width:{pct_done}%"></span></div>
+        <div style="width:46px;text-align:right;font-size:.85rem;">{pct_done}%</div>
+      </div>
+      <div style="display:flex; gap:.4rem; align-items:center;">
+        <button id="rev_{slug}" style="padding:.38rem .6rem; border-radius:10px; {rev_button_style} cursor:pointer;">Review</button>
+        <button id="quiz_{slug}" style="padding:.38rem .6rem; border-radius:10px; {quiz_button_style} cursor:pointer;">Quiz</button>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Wire up the buttons with invisible Streamlit buttons (keys)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Review", key=f"rev_btn_{slug}", help=f"Open review: {topic}", use_container_width=True):
             st.session_state.active_topic = topic
             st.session_state.view = "review"
             st.rerun()
-        elif action == "quiz":
+    with c2:
+        if st.button("Quiz", key=f"quiz_btn_{slug}", help=f"Start quiz: {topic}", use_container_width=True):
             df = load_questions_for_subjects([topic])
             st.session_state.active_topic = topic
             st.session_state.quiz_pool = df.reset_index(drop=True)
@@ -62,17 +99,25 @@ def _consume_action_query():
             st.session_state.view = "quiz"
             st.rerun()
 
-_consume_action_query()
+# ============ Auth gate ============
+if not auth_is_authed():
+    st.markdown("#### Welcome")
+    st.caption("Sign in to access your dashboard, topics, and quizzes.")
+    auth_login_form()
+    st.stop()
 
-# ------------------ Sidebar ------------------
+# ============ Sidebar ============
 with st.sidebar:
     st.markdown("### Navigate")
     if st.button("Dashboard", use_container_width=True):
-        st.session_state.view = "dashboard"; st.rerun()
+        st.session_state.view = "dashboard"
+        st.rerun()
     if st.button("Score Topics", use_container_width=True):
-        st.session_state.view = "topics"; st.rerun()
+        st.session_state.view = "topics"
+        st.rerun()
     if st.button("Make Quiz", use_container_width=True):
-        st.session_state.view = "make_quiz"; st.rerun()
+        st.session_state.view = "make_quiz"
+        st.rerun()
     if st.button("Spaced Repetition ▶", use_container_width=True):
         ids = sr_due_ids(limit=50)
         df_all = load_questions_frame()
@@ -88,85 +133,52 @@ with st.sidebar:
     st.markdown("---")
     auth_logout_button()
 
-# ------------------ Utilities ------------------
-def _topics_flat():
-    cats = get_category_map()
-    return [(cat, t) for cat, arr in cats.items() for t in arr]
-
-def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
-    # Progress
-    total_q = int(q_total_map.get(topic, 0))
-    attempted = int(progress_map.get(topic, {}).get("total", 0))
-    pct_done = int(100 * attempted / total_q) if total_q else 0
-
-    # Readiness signals
-    review_words = get_review_word_count(topic)
-    has_review = review_words >= 250
-    has_quiz   = total_q >= 5
-
-    # Compose button classes
-    review_cls = "btn sm" + (" green" if has_review else "")
-    quiz_cls   = "btn sm" + (" green" if has_quiz else "")
-
-    slug = topic_to_slug(topic)
-    # Single-bubble card with title, progress bar, and 2 compact buttons
-    st.markdown(f"""
-    <div class="topic-card">
-      <div class="topic-title">{topic}</div>
-      <div class="topic-row">
-        <div class="meter"><span style="width:{pct_done}%"></span></div>
-        <div style="width:42px;text-align:right;font-size:.82rem;">{pct_done}%</div>
-      </div>
-      <div class="topic-actions">
-        <a class="{review_cls}" href="?action=review&topic={slug}">Review</a>
-        <a class="{quiz_cls}" href="?action=quiz&topic={slug}">Quiz</a>
-        <span class="topic-meta">Q: {attempted}/{total_q}{' • Review ready' if has_review else ''}</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-def _start_quiz_from_topics(selected_topics: list, n: int):
-    df = load_questions_for_subjects(selected_topics)
-    df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
-    st.session_state.quiz_pool = df
-    st.session_state.quiz_idx = 0
-    st.session_state.quiz_answers = {}
-    st.session_state.quiz_revealed = set()
-    st.session_state.quiz_finished = False
-    st.session_state.quiz_mode = "normal"
-    st.session_state.view = "quiz"
-    st.rerun()
-
-# ------------------ Views ------------------
+# ============ Views ============
 def view_dashboard():
     st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-    acc = overall_accuracy()
-    st.metric("Overall Correct", f"{int(round(acc*100))}%")
+    acc = overall_accuracy()  # 0..1
+    acc_pct = _pct_int(acc)
 
+    # progress circle stand-ins (clean text + progress bars)
+    c1, c2, c3 = st.columns([1,1,1])
+    with c1:
+        st.metric("Overall Correct", f"{acc_pct}%")
+        st.progress(acc)
+    # Completion proxy (% attempted / total questions)
+    prog = load_progress()
+    q_total_map = questions_count_by_topic()
+    attempted_sum = sum(v.get("total", 0) for v in prog.values())
+    total_q_sum = sum(q_total_map.values()) or 1
+    completion = attempted_sum / total_q_sum
+    with c2:
+        st.metric("Completion", f"{_pct_int(completion)}%")
+        st.progress(completion)
+    # Average questions/day from 30-day series
     series = accuracy_timeseries(days=30)
+    avg_per_day = 0
     if series:
-        dates = [d for d,_,_ in series]
-        accs  = [a for _,a,_ in series]
-        counts= [n for _,_,n in series]
-        import matplotlib.pyplot as plt
-        fig1 = plt.figure()
-        plt.plot(dates, [a*100 for a in accs])
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("% Correct")
-        plt.title("Last 30 days")
-        st.pyplot(fig1, clear_figure=True)
+        avg_per_day = int(round(sum(n for _, _, n in series)/len(series)))
+    with c3:
+        st.metric("Avg Q/day (30d)", f"{avg_per_day}")
 
-        # Questions per day
-        fig2 = plt.figure()
-        plt.bar(dates, counts)
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("Questions / day")
-        plt.title("Attempts per day")
-        st.pyplot(fig2, clear_figure=True)
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+
+    if series:
+        # Streamlit-native charts (no matplotlib)
+        dates = [d for d, _, _ in series]
+        accs = [a for _, a, _ in series]
+        counts = [n for _, _, n in series]
+        df_acc = pd.DataFrame({"date": dates, "accuracy": [x*100 for x in accs]}).set_index("date")
+        df_cnt = pd.DataFrame({"date": dates, "attempts": counts}).set_index("date")
+        st.markdown("**Last 30 days — Accuracy (%)**")
+        st.line_chart(df_acc)
+        st.markdown("**Last 30 days — Attempts**")
+        st.bar_chart(df_cnt)
     else:
         st.info("No attempts yet. Start a quiz to build your trend.")
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+
     strong, weak = topic_strengths(k=5)
     c1, c2 = st.columns(2)
     with c1:
@@ -186,32 +198,25 @@ def view_topics():
     q_count = questions_count_by_topic()
     prog = load_progress()
 
-    # Top header: category selector & search
-    s1, s2 = st.columns([2,1])
-    with s1:
-        q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
-    with s2:
-        cat_names = ["All"] + list(cats.keys())
-        choose = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
-
-    topics = []
-    for cat, arr in cats.items():
-        if choose != "All" and cat != choose: continue
-        for t in arr:
-            if q and q not in t.lower(): continue
-            topics.append(t)
-
-    if not topics:
-        st.info("No topics match your filter.")
-        return
-
-    # Render cards in 3 columns, but one compact bubble per topic (title+bar+buttons)
-    cols = st.columns(3)
-    for i, t in enumerate(topics):
-        with cols[i % 3]:
-            _render_topic_card(t, q_count, prog)
+    # Top tabs for categories (clean + readable)
+    cat_names = list(cats.keys())
+    tabs = st.tabs(cat_names)
+    for tab, cat in zip(tabs, cat_names):
+        with tab:
+            st.caption(f"{cat}")
+            topics = cats[cat]
+            if not topics:
+                st.info("No topics in this category.")
+                continue
+            cols = st.columns(3)
+            i = 0
+            for t in topics:
+                with cols[i % 3]:
+                    _topic_card(t, q_count, prog)
+                i += 1
 
 def view_review():
+    # Stay logged in; only route here if authed
     topic = st.session_state.get("active_topic") or ""
     if not topic:
         st.info("Choose a topic from Score Topics.")
@@ -219,14 +224,24 @@ def view_review():
     st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
     p = resolve_review_path(topic)
     if not p:
-        st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named with the topic slug.")
+        st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named after this topic (slugified).")
         return
     with open(p, "r", encoding="utf-8") as f:
         txt = f.read()
+    # Render the raw markdown review
     st.markdown(txt, unsafe_allow_html=True)
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    st.markdown(f"<a class='btn sm' href='?action=quiz&topic={topic_to_slug(topic)}'>Quiz this topic ▶</a>", unsafe_allow_html=True)
+    if st.button("Quiz this topic ▶", use_container_width=True):
+        df = load_questions_for_subjects([topic])
+        st.session_state.quiz_pool = df.reset_index(drop=True)
+        st.session_state.quiz_idx = 0
+        st.session_state.quiz_answers = {}
+        st.session_state.quiz_revealed = set()
+        st.session_state.quiz_finished = False
+        st.session_state.quiz_mode = "normal"
+        st.session_state.view = "quiz"
+        st.rerun()
 
 def view_make_quiz():
     st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
@@ -234,8 +249,18 @@ def view_make_quiz():
     pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
     n = st.number_input("Number of questions", 5, 100, 20, step=5)
     if st.button("Start ▶", use_container_width=True):
-        if pick and "Any" in pick: pick = []
-        _start_quiz_from_topics(pick, int(n))
+        if pick and "Any" in pick:
+            pick = []
+        df = load_questions_for_subjects(pick)
+        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
+        st.session_state.quiz_pool = df
+        st.session_state.quiz_idx = 0
+        st.session_state.quiz_answers = {}
+        st.session_state.quiz_revealed = set()
+        st.session_state.quiz_finished = False
+        st.session_state.quiz_mode = "normal"
+        st.session_state.view = "quiz"
+        st.rerun()
 
 def view_quiz():
     pool: pd.DataFrame = st.session_state.get("quiz_pool")
@@ -243,21 +268,27 @@ def view_quiz():
         if st.session_state.get("quiz_mode") == "spaced":
             st.success("✅ No spaced-repetition items due.")
         else:
-            st.info("No questions found. Add `.md` files to `data/questions/`.")
+            st.info("No questions found. Add `.md` files under `data/questions/<topic-slug>/`.")
         return
 
     i = st.session_state.get("quiz_idx", 0)
     row = pool.iloc[i]
     pct = int(((i + 1) / len(pool)) * 100)
     st.progress(pct/100)
-    suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
+    suffix = f" • {row.get('subject','')}" if row.get('subject') else ""
     st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
     st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
     letters = ["A","B","C","D","E"]
-    default_idx = letters.index(st.session_state.quiz_answers[row["id"]]) if row["id"] in st.session_state.quiz_answers else None
-    choice = st.radio("", letters, index=default_idx, format_func=lambda L: row[L], label_visibility="collapsed", key=f"q_{row['id']}")
+    prev_choice = st.session_state.quiz_answers.get(row["id"])
+    default_idx = letters.index(prev_choice) if prev_choice in letters else 0
+    choice = st.radio("",
+                      letters,
+                      index=default_idx,
+                      format_func=lambda L: row[L],
+                      label_visibility="collapsed",
+                      key=f"q_{row['id']}")
     st.session_state.quiz_answers[row["id"]] = choice
 
     c1, c2, c3, c4 = st.columns([1,2,2,1])
@@ -276,12 +307,15 @@ def view_quiz():
 
     if row["id"] in st.session_state.quiz_revealed:
         is_correct = (choice == row["correct"])
-        verdict_class = "verdict-ok" if is_correct else "verdict-err"
-        verdict_text = "Correct" if is_correct else "Incorrect"
-        st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
-        if str(row["explanation"]).strip():
+        verdict_html = (
+            "<span class='verdict verdict-ok'>Correct</span>"
+            if is_correct else
+            "<span class='verdict verdict-err'>Incorrect</span>"
+        )
+        st.markdown(verdict_html, unsafe_allow_html=True)
+        if str(row.get("explanation","")).strip():
             st.markdown(row["explanation"], unsafe_allow_html=True)
-        # Log attempt once
+        # log once per question id
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
             record_attempt(row.get("subject",""), row["id"], is_correct)
@@ -290,14 +324,14 @@ def view_quiz():
             st.session_state[key] = True
 
     if st.session_state.quiz_finished:
-        correct_n = sum(
-            1 for qid, ans in st.session_state.quiz_answers.items()
-            if pool.set_index("id").loc[qid]["correct"] == ans and qid in st.session_state.quiz_revealed
-        )
-        revealed_n = sum(1 for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed)
-        st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
+        # Score only revealed questions
+        idxed = pool.set_index("id")
+        scored_ids = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
+        correct_n = sum(1 for qid in scored_ids if idxed.loc[qid]["correct"] == st.session_state.quiz_answers[qid])
+        denom = len(scored_ids) if scored_ids else len(pool)
+        st.success(f"Score: {correct_n}/{denom}")
 
-# ------------------ Router ------------------
+# ============ Router ============
 view = st.session_state.get("view", "dashboard")
 if view == "topics":
     view_topics()
