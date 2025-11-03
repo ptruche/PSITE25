@@ -1,311 +1,620 @@
-# app.py
-import streamlit as st
+# psite_core.py
+import os, re, glob, json, time, secrets, base64, hashlib, hmac, datetime as dt
+from typing import Dict, List, Tuple, Optional
 import pandas as pd
+import streamlit as st
 import streamlit.components.v1 as components
 
-from psite_core import (
-    apply_base_theme, ensure_session_keys, try_auto_login_persisted,
-    auth_is_authed, auth_login_form, auth_logout_button,
-    get_category_map, get_topics, resolve_review_path,
-    load_questions_for_subjects, load_questions_frame,
-    questions_count_by_topic, record_attempt, overall_accuracy,
-    accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
-    load_progress, topic_to_slug, slug_to_topic, get_review_word_count,
-)
+# Optional cookie manager
+COOKIE_AVAILABLE = True
+try:
+    from streamlit_cookies_manager import EncryptedCookieManager
+except Exception:
+    COOKIE_AVAILABLE = False
 
-st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide", initial_sidebar_state="expanded")
-apply_base_theme()
-ensure_session_keys()
-try_auto_login_persisted()
+# ============================== PATHS ==============================
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR      = os.path.join(BASE_DIR, "data")
+QUESTIONS_DIR = os.path.join(DATA_DIR, "questions")
+REVIEWS_DIR   = os.path.join(DATA_DIR, "reviews")
+STATE_DIR     = os.path.join(DATA_DIR, "state")
+USERS_JSON    = os.path.join(STATE_DIR, "users.json")
+SECRET_FILE   = os.path.join(STATE_DIR, "secret.key")
+THEME_CSS     = os.path.join(BASE_DIR, "theme.css")
 
-# ------------------ Header ------------------
-st.markdown("""
-<div class="app-header">
-  <div class="app-header-inner">
-    <div class="app-brand"><div class="app-title">PSITE Mastery</div></div>
-    <div></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR]:
+    os.makedirs(p, exist_ok=True)
 
-# ------------------ Auth Gate ------------------
-if not auth_is_authed():
-    st.markdown("#### Welcome")
-    st.caption("Sign in to access your dashboard, topics, and quizzes.")
-    auth_login_form()
-    st.stop()
+CREATE_TOPIC_DIRS = True
 
-# ------------------ Action Router via query params (for HTML buttons) ------------------
-def _consume_action_query():
-    qp = dict(st.query_params)
-    action = qp.get("action")
-    slug = qp.get("topic")
-    if action and slug:
-        topic = slug_to_topic(slug)
-        # Clear action so we don't loop
-        st.query_params.clear()
-        if not topic:
-            return
-        if action == "review":
-            st.session_state.active_topic = topic
-            st.session_state.view = "review"
-            st.rerun()
-        elif action == "quiz":
-            df = load_questions_for_subjects([topic])
-            st.session_state.active_topic = topic
-            st.session_state.quiz_pool = df.reset_index(drop=True)
-            st.session_state.quiz_idx = 0
-            st.session_state.quiz_answers = {}
-            st.session_state.quiz_revealed = set()
-            st.session_state.quiz_finished = False
-            st.session_state.quiz_mode = "normal"
-            st.session_state.view = "quiz"
-            st.rerun()
+# ============================== THEME ==============================
+def apply_base_theme():
+    if os.path.exists(THEME_CSS):
+        with open(THEME_CSS, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+      /* Sidebar should not reserve dead space when collapsed */
+      [data-testid="stSidebar"] { min-width: 300px !important; width: 300px !important; }
+      .stSidebar.collapsed ~ div[data-testid="stMain"] .block-container { max-width: 1200px !important; }
 
-_consume_action_query()
+      :root { --header-h: 64px; --accent:#1d4ed8; --border:#eef0f3; --ok:#10b981; --bg:#ffffff; --muted:#6b7280; }
+      header { visibility:hidden; height:0!important; }
+      .app-header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:#fff;
+        border-bottom:1px solid var(--border);z-index:1000;display:flex;align-items:center;}
+      .app-header-inner{max-width:1200px;margin:0 auto;width:100%;padding:0 12px;
+        display:flex;align-items:center;justify-content:space-between;}
+      .app-title{font-weight:800;font-size:1.08rem; white-space:nowrap;}
+      .block-container{padding-top:calc(var(--header-h) + 12px)!important;}
 
-# ------------------ Sidebar ------------------
-with st.sidebar:
-    st.markdown("### Navigate")
-    if st.button("Dashboard", use_container_width=True):
-        st.session_state.view = "dashboard"; st.rerun()
-    if st.button("Score Topics", use_container_width=True):
-        st.session_state.view = "topics"; st.rerun()
-    if st.button("Make Quiz", use_container_width=True):
-        st.session_state.view = "make_quiz"; st.rerun()
-    if st.button("Spaced Repetition ▶", use_container_width=True):
-        ids = sr_due_ids(limit=50)
-        df_all = load_questions_frame()
-        pool = df_all[df_all["id"].isin(ids)].reset_index(drop=True) if not df_all.empty else df_all
-        st.session_state.quiz_pool = pool
-        st.session_state.quiz_idx = 0
-        st.session_state.quiz_answers = {}
-        st.session_state.quiz_revealed = set()
-        st.session_state.quiz_finished = False
-        st.session_state.quiz_mode = "spaced"
-        st.session_state.view = "quiz"
-        st.rerun()
-    st.markdown("---")
-    auth_logout_button()
+      .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
+      .divider{height:1px;background:var(--border);margin:1rem 0;}
 
-# ------------------ Utilities ------------------
-def _topics_flat():
-    cats = get_category_map()
-    return [(cat, t) for cat, arr in cats.items() for t in arr]
+      .topic-card{border:1px solid var(--border);border-radius:14px;background:var(--bg);
+        padding:.9rem .9rem .7rem .9rem; box-shadow:0 1px 4px rgba(0,0,0,.03);
+        display:flex;flex-direction:column;gap:.55rem;}
+      .topic-title{font-weight:700;font-size:1rem;line-height:1.25;}
+      .topic-row{display:flex;align-items:center;gap:.6rem;}
+      .meter{flex:1;height:8px;background:#f2f5fb;border-radius:999px;overflow:hidden;}
+      .meter>span{display:block;height:100%;background:var(--accent);width:0%;}
+      .topic-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;}
+      .btn{border:1px solid #dbe2ea;border-radius:10px;padding:.28rem .55rem;background:#fff;
+           cursor:pointer;font-size:.80rem;line-height:1.1; text-decoration:none; color:#111;}
+      .btn.sm{padding:.22rem .5rem;font-size:.78rem;border-radius:9px;}
+      .btn.green{background:var(--ok); color:#fff; border-color:#18c08d;}
+      .btn:hover{filter:brightness(0.98);}
+      .topic-meta{font-size:.82rem;color:var(--muted);}
 
-def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
-    # Progress
-    total_q = int(q_total_map.get(topic, 0))
-    attempted = int(progress_map.get(topic, {}).get("total", 0))
-    pct_done = int(100 * attempted / total_q) if total_q else 0
+      .pill{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;cursor:pointer;font-size:.85rem;}
+      .pill.secondary{background:#f7f9fc;}
 
-    # Readiness signals
-    review_words = get_review_word_count(topic)
-    has_review = review_words >= 250
-    has_quiz   = total_q >= 5
-
-    # Compose button classes
-    review_cls = "btn sm" + (" green" if has_review else "")
-    quiz_cls   = "btn sm" + (" green" if has_quiz else "")
-
-    slug = topic_to_slug(topic)
-    # Single-bubble card with title, progress bar, and 2 compact buttons
-    st.markdown(f"""
-    <div class="topic-card">
-      <div class="topic-title">{topic}</div>
-      <div class="topic-row">
-        <div class="meter"><span style="width:{pct_done}%"></span></div>
-        <div style="width:42px;text-align:right;font-size:.82rem;">{pct_done}%</div>
-      </div>
-      <div class="topic-actions">
-        <a class="{review_cls}" href="?action=review&topic={slug}">Review</a>
-        <a class="{quiz_cls}" href="?action=quiz&topic={slug}">Quiz</a>
-        <span class="topic-meta">Q: {attempted}/{total_q}{' • Review ready' if has_review else ''}</span>
-      </div>
-    </div>
+      .q-prompt { border:1px solid var(--border); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
+      .verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
+      .verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
+      .verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
+    </style>
     """, unsafe_allow_html=True)
 
-def _start_quiz_from_topics(selected_topics: list, n: int):
-    df = load_questions_for_subjects(selected_topics)
-    df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
-    st.session_state.quiz_pool = df
-    st.session_state.quiz_idx = 0
-    st.session_state.quiz_answers = {}
-    st.session_state.quiz_revealed = set()
-    st.session_state.quiz_finished = False
-    st.session_state.quiz_mode = "normal"
-    st.session_state.view = "quiz"
-    st.rerun()
+# ============================== JSON I/O ==============================
+def _read_json(path, default):
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return default
+    return default
 
-# ------------------ Views ------------------
-def view_dashboard():
-    st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-    acc = overall_accuracy()
-    st.metric("Overall Correct", f"{int(round(acc*100))}%")
+def _write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    series = accuracy_timeseries(days=30)
-    if series:
-        dates = [d for d,_,_ in series]
-        accs  = [a for _,a,_ in series]
-        counts= [n for _,_,n in series]
-        import matplotlib.pyplot as plt
-        fig1 = plt.figure()
-        plt.plot(dates, [a*100 for a in accs])
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("% Correct")
-        plt.title("Last 30 days")
-        st.pyplot(fig1, clear_figure=True)
+# ============================== SECRET / TOKENS ==============================
+def _get_app_secret() -> bytes:
+    if os.path.exists(SECRET_FILE):
+        with open(SECRET_FILE, "rb") as f:
+            return f.read()
+    secret = secrets.token_bytes(32)
+    os.makedirs(os.path.dirname(SECRET_FILE), exist_ok=True)
+    with open(SECRET_FILE, "wb") as f:
+        f.write(secret)
+    return secret
 
-        # Questions per day
-        fig2 = plt.figure()
-        plt.bar(dates, counts)
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("Questions / day")
-        plt.title("Attempts per day")
-        st.pyplot(fig2, clear_figure=True)
-    else:
-        st.info("No attempts yet. Start a quiz to build your trend.")
+def _b64url_encode(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
 
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    strong, weak = topic_strengths(k=5)
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Strongest topics**")
-        if not strong: st.caption("—")
-        for t, a, n in strong:
-            st.write(f"{t} — {int(a*100)}% ({n} q)")
-    with c2:
-        st.markdown("**Weakest topics**")
-        if not weak: st.caption("—")
-        for t, a, n in weak:
-            st.write(f"{t} — {int(a*100)}% ({n} q)")
+def _b64url_decode(s: str) -> bytes:
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + pad)
 
-def view_topics():
-    st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
-    cats = get_category_map()
-    q_count = questions_count_by_topic()
-    prog = load_progress()
+def _sign(payload_b64: str) -> str:
+    sig = hmac.new(_get_app_secret(), payload_b64.encode(), hashlib.sha256).digest()
+    return _b64url_encode(sig)
 
-    # Top header: category selector & search
-    s1, s2 = st.columns([2,1])
-    with s1:
-        q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
-    with s2:
-        cat_names = ["All"] + list(cats.keys())
-        choose = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
+def issue_auth_token(username: str, days_valid: int = 7) -> str:
+    payload = {"u": username, "exp": int(time.time()) + days_valid*86400}
+    payload_b64 = _b64url_encode(json.dumps(payload, separators=(",",":")).encode())
+    sig = _sign(payload_b64)
+    return f"{payload_b64}.{sig}"
 
-    topics = []
-    for cat, arr in cats.items():
-        if choose != "All" and cat != choose: continue
-        for t in arr:
-            if q and q not in t.lower(): continue
-            topics.append(t)
+def verify_auth_token(token: str) -> Optional[str]:
+    if not token or "." not in token: return None
+    payload_b64, sig = token.split(".", 1)
+    if not hmac.compare_digest(_sign(payload_b64), sig): return None
+    try:
+        payload = json.loads(_b64url_decode(payload_b64))
+    except Exception:
+        return None
+    if int(payload.get("exp", 0)) < int(time.time()): return None
+    return payload.get("u")
 
-    if not topics:
-        st.info("No topics match your filter.")
-        return
+# ============================== COOKIES / URL / LOCALSTORAGE ==============================
+def _cookies():
+    if COOKIE_AVAILABLE:
+        cm = EncryptedCookieManager(prefix="psite_", password=_get_app_secret().hex())
+        if not cm.ready():
+            st.stop()
+        return cm
+    class _Shim:
+        def __getitem__(self, k): return st.session_state.get(f"_cookie_{k}", "")
+        def __setitem__(self, k, v): st.session_state[f"_cookie_{k}"] = v
+        def get(self, k, default=""): return st.session_state.get(f"_cookie_{k}", default)
+        def save(self): pass
+    return _Shim()
 
-    # Render cards in 3 columns, but one compact bubble per topic (title+bar+buttons)
-    cols = st.columns(3)
-    for i, t in enumerate(topics):
-        with cols[i % 3]:
-            _render_topic_card(t, q_count, prog)
+def _get_query_params() -> dict:
+    try: return dict(st.query_params)
+    except Exception: return {k: (v[0] if isinstance(v, list) and v else v) for k,v in st.experimental_get_query_params().items()}
 
-def view_review():
-    topic = st.session_state.get("active_topic") or ""
-    if not topic:
-        st.info("Choose a topic from Score Topics.")
-        return
-    st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
+def _set_query_params(**kwargs):
+    try:
+        qp = dict(st.query_params)
+        for k,v in kwargs.items():
+            if v is None: qp.pop(k, None)
+            else: qp[k]=v
+        st.query_params.clear()
+        for k,v in qp.items():
+            st.query_params[k]=v
+    except Exception:
+        base = st.experimental_get_query_params()
+        for k,v in kwargs.items():
+            if v is None: base.pop(k, None)
+            else: base[k]=v
+        st.experimental_set_query_params(**base)
+
+def _js_set_token(token: str):
+    components.html(f"""
+    <script>
+      try {{
+        localStorage.setItem('psite_token', {json.dumps(token)});
+        const url = new URL(window.location);
+        url.searchParams.set('t', {json.dumps(token)});
+        window.history.replaceState(null, '', url.toString());
+        window.parent.postMessage({{streamlitRerun:true}}, "*");
+      }} catch (e) {{}}
+    </script>
+    """, height=0)
+
+def _js_restore_token_if_missing():
+    components.html("""
+    <script>
+      try {
+        const url = new URL(window.location);
+        const hasT = url.searchParams.get('t');
+        const saved = localStorage.getItem('psite_token');
+        if (!hasT && saved) {
+          url.searchParams.set('t', saved);
+          window.history.replaceState(null, '', url.toString());
+          window.parent.postMessage({streamlitRerun:true}, "*");
+        }
+      } catch (e) {}
+    </script>
+    """, height=0)
+
+def persist_login(username: str, remember_days: int = 7):
+    st.session_state.auth_user = username
+    token = issue_auth_token(username, remember_days)
+    try:
+        cm = _cookies(); cm["auth"] = token; cm.save()
+    except Exception:
+        pass
+    _set_query_params(t=token)
+    _js_set_token(token)
+
+def clear_persisted_login():
+    st.session_state.pop("auth_user", None)
+    try:
+        cm = _cookies(); cm["auth"] = ""; cm.save()
+    except Exception:
+        pass
+    _set_query_params(t=None)
+    components.html("""
+    <script>
+      try { localStorage.removeItem('psite_token'); } catch(e) {}
+      try { const url=new URL(window.location); url.searchParams.delete('t');
+            window.history.replaceState(null,'',url.toString()); } catch(e){}
+    </script>
+    """, height=0)
+
+def try_auto_login_persisted():
+    if st.session_state.get("auth_user"): return
+    _js_restore_token_if_missing()
+    try:
+        cm = _cookies(); token = cm.get("auth")
+        user = verify_auth_token(token) if token else None
+        if user:
+            st.session_state.auth_user = user
+            return
+    except Exception:
+        pass
+    token = _get_query_params().get("t")
+    user = verify_auth_token(token) if token else None
+    if user:
+        st.session_state.auth_user = user
+
+# ============================== AUTH ==============================
+def _hash_pw(password: str, salt_b64: Optional[str] = None) -> Tuple[str, str]:
+    salt = base64.b64decode(salt_b64) if salt_b64 else secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000, dklen=32)
+    return base64.b64encode(dk).decode(), base64.b64encode(salt).decode()
+
+def _verify_pw(password: str, salt_b64: str, hash_b64: str) -> bool:
+    calc, _ = _hash_pw(password, salt_b64)
+    return hmac.compare_digest(calc, hash_b64)
+
+def auth_is_authed() -> bool:
+    return bool(st.session_state.get("auth_user"))
+
+def auth_user_dir(username: str) -> str:
+    p = os.path.join(STATE_DIR, "users", re.sub(r"[^A-Za-z0-9_.-]+", "_", username))
+    os.makedirs(p, exist_ok=True); return p
+
+def _user_paths(username: str) -> Dict[str, str]:
+    base = auth_user_dir(username)
+    return {
+        "progress": os.path.join(base, "progress.json"),
+        "history":  os.path.join(base, "history.json"),
+        "sr":       os.path.join(base, "sr.json"),
+    }
+
+def auth_login_form():
+    st.markdown("<div class='topic-card'><b>Login</b></div>", unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["Sign in", "Create account"])
+    with tab1:
+        with st.form("login_form"):
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
+            remember = st.checkbox("Remember me", value=True)
+            if st.form_submit_button("Sign in"):
+                users = _read_json(USERS_JSON, {})
+                rec = users.get(u)
+                if not rec or not _verify_pw(p, rec["salt"], rec["hash"]):
+                    st.error("Invalid username or password.")
+                else:
+                    persist_login(u, remember_days=(7 if remember else 1))
+                    st.rerun()
+    with tab2:
+        with st.form("create_form"):
+            u = st.text_input("New username")
+            p1 = st.text_input("Password", type="password")
+            p2 = st.text_input("Confirm password", type="password")
+            if st.form_submit_button("Create account"):
+                if not u or not p1:
+                    st.error("Username and password required.")
+                elif p1 != p2:
+                    st.error("Passwords do not match.")
+                else:
+                    users = _read_json(USERS_JSON, {})
+                    if u in users:
+                        st.error("Username is taken.")
+                    else:
+                        h, s = _hash_pw(p1)
+                        users[u] = {"hash": h, "salt": s, "created": int(time.time())}
+                        _write_json(USERS_JSON, users)
+                        _ = auth_user_dir(u)
+                        st.success("Account created. Please sign in.")
+                        st.rerun()
+
+def auth_logout_button():
+    if st.button("Logout", type="secondary"):
+        clear_persisted_login(); st.rerun()
+
+# ============================== SCORE TOPICS ==============================
+CATEGORY_TO_TOPICS = {
+    "Category 1: Thoracic, Pulmonary, Airway, Chest Wall": [
+        "Bronchoscopy",
+        "Chest Wall Deformities: Pectus Excavatum/Carinatum, Marfan’s and Poland’s Syndromes",
+        "Chylothorax","Congenital Diaphragmatic Hernia","Cystic Diseases of the Lung",
+        "Cystic Fibrosis","Cystic Pulmonary Airway Malformation","Empyema",
+        "Esophageal Atresia and Tracheoesophageal Fistula","Esophageal Perforation",
+        "Esophageal Replacement","Esophageal Stenosis, Webs, Diverticuli",
+        "Esophageal Stricture: Caustic Ingestion and Other Causes","Esophagoscopy",
+        "Eventration of the Diaphragm","Gastroesophageal Reflux/Barrett's Esophagus",
+        "Laryngomalacia","Lobar Emphysema","Mediastinal Cysts, Masses","Patent Ductus Arteriosus",
+        "Pneumothorax","Prenatal Anomalies and Therapy","Pulmonary Abscess",
+        "Pulmonary Hypoplasia/Hypertension","Pulmonary Sequestration",
+        "Subacute Bacterial Endocarditis Prophylaxis","Tracheobronchial Foreign Bodies",
+        "Tracheomalacia","Vascular Ring and Pulmonary Artery Sling",
+    ],
+    "Category 2: GI, Hepatobiliary, Abdominal Wall, Fetal": [
+        "Abdominal Pain","Alimentary Tract Duplications","Appendicitis","Ascites: Chylous",
+        "Biliary Atresia","Choledochal Cysts","Cloacal Exstrophy/Bladder Exstrophy",
+        "Duodenal Atresia/Stenosis/Webs/Annular Pancreas","Gallbladder Disease, Gallstones",
+        "Gastric Volvulus","Gastrointestinal Bleeding","Gastroschisis",
+        "Hepatic Infections: Hepatitis, Abscess, Cysts","Hirschsprung Disease","Hypertrophic Pyloric Stenosis",
+        "Inflammatory Bowel Disease","Inguinal Hernia","Intestinal Atresia","Intussusception","Malrotation",
+        "Meconium Ileus/Peritonitis/Plug","Mesenteric and Omental Cysts","Necrotizing Enterocolitis",
+        "Neonatal Gastric Perforation","Neonatal Obstruction","Omphalocele",
+        "Omphalomesenteric Duct Remnants, Urachus, and Meckel's","Peptic Ulcer Disease","Polyps",
+        "Portal Hypertension","Umbilical Hernia and Other Umbilical Disorders",
+    ],
+    "Category 3: Head/Neck, Endocrine, Breast, GU, Anorectal": [
+        "Adrenal Cortical Tumors, Pheochromocytoma",
+        "Anal Pathology: Fissures, Abscesses, Fistulae, Pilonidal, Prolapse",
+        "Anorectal Malformation","Arterial Diseases and Vasculitis","Branchial Cleft, Arch Anomalies",
+        "Breast Disorders","Circumcision and Abnormalities of the Urethra, Penis, Scrotum",
+        "Disorders of Sexual Development","Endocrine Diseases","Lymphadenopathy, Atypical Mycobacteria",
+        "Neurological: Shunt Complications, Dermal Sinuses","Ovarian Torsion, Cysts, and Tumors",
+        "Renal Diseases: Nephrotic Syndrome, DI, Renal Vein Thrombosis, Chronic Failure, Prune Belly Syndrome",
+        "Thyroglossal Duct Cyst/Sinus","Thyroid Nodules","Torsions: Appendix Testes, Testicular",
+        "Torticollis","Undescended Testicle (Cryptorchidism)","Vaginal Atresia, Hydrometrocolpos","Vascular Anomalies",
+    ],
+    "Category 4: Trauma and Critical Care, Metabolism, Surgical Emergencies": [
+        "Abdominal Trauma","Acute Renal Failure","ARDS",
+        "Burns: Resuscitation, Airway, Electrical, Nutrition, Wound, Sepsis",
+        "Cardiovascular Trauma: Tamponade, Contusion, Arch Disruption, Peripheral Vascular Injuries",
+        "Coagulation","Extracorporeal Life Support","Fluids and Electrolytes",
+        "Hematologic Diseases: Spherocytosis, Sickle Cell, ITP, HSP",
+        "Lung Physiology, Pathophysiology, Ventilators, Pneumonia",
+        "Musculoskeletal Trauma: Pelvis, Long Bone",
+        "Neonatal Physiology and Pathophysiology: Transition from Fetal Circulation, Cardiovascular Monitoring, Shock",
+        "Neurosurgical Trauma","Nonaccidental Injuries: Diagnosis, Evaluation, Legal Issues",
+        "Nutrition","Obesity","Pediatric Anesthesia and Pain Management",
+        "Short Bowel Syndrome/Intestinal Failure","Soft Tissue Trauma: Tetanus, Bites, Wound Infection, Crush Injuries",
+        "Thoracic Trauma","Transplantation","Trauma: Initial Assessment and Resuscitation",
+    ],
+    "Category 5: Cancer, Tumors, Spleen": [
+        "Abdominal Mass in the Newborn","Adrenal Cancer",
+        "Benign Liver Tumors: Hepatic Mesenchymal Hamartoma/Adenoma/FNH",
+        "Bone Tumors: Osteogenic Sarcoma, Ewing Sarcoma",
+        "Chemo/Radiation Therapy, Immunotherapy Concepts, Genetics",
+        "Dermoid/Epidermoid Cysts, Soft Tissue Nodules","Gastrointestinal Tumors",
+        "Lung and Chest Wall Tumors","Lymphoma/Leukemia",
+        "Malignant Liver Tumors: Hepatoblastoma/Hepatocellular Carcinoma",
+        "Mesoblastic Nephroma","Neuroblastoma","Nevi, Melanoma",
+        "Ovarian and Adnexal Problems","Rhabdomyosarcoma","Splenic Diseases","Teratoma",
+        "Testicular Tumors","Wilms Tumor, Renal Cell Carcinoma, and Hemihypertrophy",
+    ],
+}
+ALL_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
+def get_topics() -> List[str]: return ALL_TOPICS
+def get_category_map() -> dict: return CATEGORY_TO_TOPICS
+
+# Helpers for slug <-> topic
+def slugify(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()[:120]
+
+TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
+SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
+def topic_to_slug(topic: str) -> str: return TOPIC_TO_SLUG.get(topic, slugify(topic))
+def slug_to_topic(slug: str) -> Optional[str]: return SLUG_TO_TOPIC.get(slug)
+
+def ensure_topic_dirs():
+    if not CREATE_TOPIC_DIRS: return
+    for t, slug in TOPIC_TO_SLUG.items():
+        os.makedirs(os.path.join(QUESTIONS_DIR, slug), exist_ok=True)
+
+ensure_topic_dirs()
+
+# ============================== QUESTIONS / REVIEWS ==============================
+FRONTMATTER_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.MULTILINE)
+EXPL_SPLIT_RE  = re.compile(r"<!--\s*EXPLANATION\s*-->", re.IGNORECASE)
+REQUIRED_COLS  = ["id","subject","stem","A","B","C","D","E","correct","explanation"]
+
+def parse_front_matter(text: str) -> Tuple[Dict, str]:
+    m = FRONTMATTER_RE.match(text)
+    if not m: raise ValueError("Missing front-matter '--- ... ---'")
+    fm, body = m.group(1), m.group(2)
+    meta: Dict[str, str] = {}
+    for line in fm.splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+    return meta, body.strip()
+
+def split_stem_explanation(body: str) -> Tuple[str, str]:
+    parts = EXPL_SPLIT_RE.split(body, maxsplit=1)
+    return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else (body.strip(), "")
+
+def _infer_subject_from_path(path: str) -> Optional[str]:
+    parent = os.path.basename(os.path.dirname(path)).lower()
+    return SLUG_TO_TOPIC.get(parent)
+
+def load_questions_frame() -> pd.DataFrame:
+    files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True))
+    rows = []
+    for f in files:
+        try:
+            with open(f, "r", encoding="utf-8") as h:
+                raw = h.read()
+            meta, body = parse_front_matter(raw)
+            stem, explanation = split_stem_explanation(body)
+            subject = (meta.get("subject","") or "").strip()
+            if not subject:
+                subject = _infer_subject_from_path(f) or ""
+            rec = {
+                "id": meta.get("id","").strip(),
+                "subject": subject,
+                "A": meta.get("A","").strip(),
+                "B": meta.get("B","").strip(),
+                "C": meta.get("C","").strip(),
+                "D": meta.get("D","").strip(),
+                "E": meta.get("E","").strip(),
+                "correct": meta.get("correct","").strip().upper(),
+                "stem": stem, "explanation": explanation,
+            }
+            if rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]:
+                rows.append(rec)
+        except Exception:
+            continue
+    if not rows:
+        return pd.DataFrame(columns=REQUIRED_COLS)
+    df = pd.DataFrame(rows)
+    for c in REQUIRED_COLS:
+        if c not in df.columns: df[c] = ""
+        df[c] = df[c].astype(str).str.strip()
+    df["correct"] = df["correct"].str.upper()
+    df = df[df["subject"].isin(get_topics())].copy()
+    return df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
+
+def load_questions_for_subjects(subjects: List[str]) -> pd.DataFrame:
+    if not subjects: return load_questions_frame()
+    df = load_questions_frame()
+    if df.empty: return df
+    return df[df["subject"].isin(subjects)].reset_index(drop=True)
+
+def resolve_review_path(topic: str) -> Optional[str]:
+    slug = TOPIC_TO_SLUG.get(topic, slugify(topic))
+    exact = os.path.join(REVIEWS_DIR, f"{slug}.md")
+    if os.path.exists(exact): return exact
+    alt = os.path.join(REVIEWS_DIR, f"{topic}.md")
+    if os.path.exists(alt): return alt
+    for p in sorted(glob.glob(os.path.join(REVIEWS_DIR, "*.md"))):
+        base = os.path.splitext(os.path.basename(p))[0].lower()
+        if base.startswith(slug): return p
+    return None
+
+def get_review_word_count(topic: str) -> int:
+    """Return word count of the review markdown for the topic, 0 if missing."""
     p = resolve_review_path(topic)
-    if not p:
-        st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named with the topic slug.")
-        return
-    with open(p, "r", encoding="utf-8") as f:
-        txt = f.read()
-    st.markdown(txt, unsafe_allow_html=True)
+    if not p: return 0
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            txt = f.read()
+        # crude word count (strip code fences/links)
+        txt = re.sub(r"```[\\s\\S]*?```", " ", txt)
+        txt = re.sub(r"<[^>]+>", " ", txt)
+        txt = re.sub(r"\\[.*?\\]\\(.*?\\)", " ", txt)
+        words = re.findall(r"[A-Za-z0-9_’']+", txt)
+        return len(words)
+    except Exception:
+        return 0
 
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    st.markdown(f"<a class='btn sm' href='?action=quiz&topic={topic_to_slug(topic)}'>Quiz this topic ▶</a>", unsafe_allow_html=True)
+def questions_count_by_topic() -> Dict[str, int]:
+    df = load_questions_frame()
+    if df.empty: return {t:0 for t in get_topics()}
+    return df.groupby("subject")["id"].nunique().to_dict()
 
-def view_make_quiz():
-    st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
-    topics = ["Any"] + get_topics()
-    pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
-    n = st.number_input("Number of questions", 5, 100, 20, step=5)
-    if st.button("Start ▶", use_container_width=True):
-        if pick and "Any" in pick: pick = []
-        _start_quiz_from_topics(pick, int(n))
+# ============================== USER STATE / ANALYTICS ==============================
+def _user_file(pathkey: str) -> str:
+    u = st.session_state.get("auth_user")
+    if not u: raise RuntimeError("Not authenticated.")
+    base = auth_user_dir(u)
+    paths = {
+        "progress": os.path.join(base, "progress.json"),
+        "history":  os.path.join(base, "history.json"),
+        "sr":       os.path.join(base, "sr.json"),
+    }
+    return paths[pathkey]
 
-def view_quiz():
-    pool: pd.DataFrame = st.session_state.get("quiz_pool")
-    if pool is None or pool.empty:
-        if st.session_state.get("quiz_mode") == "spaced":
-            st.success("✅ No spaced-repetition items due.")
-        else:
-            st.info("No questions found. Add `.md` files to `data/questions/`.")
-        return
+def load_progress() -> Dict[str, Dict]:
+    topics = get_topics()
+    data = _read_json(_user_file("progress"), {})
+    for t in topics:
+        data.setdefault(t, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
+    for k in list(data.keys()):
+        if k not in topics: data.pop(k, None)
+    return data
 
-    i = st.session_state.get("quiz_idx", 0)
-    row = pool.iloc[i]
-    pct = int(((i + 1) / len(pool)) * 100)
-    st.progress(pct/100)
-    suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
-    st.caption(f"Question {i+1} of {len(pool)}{suffix}")
+def save_progress(d: Dict[str, Dict]): _write_json(_user_file("progress"), d)
 
-    st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
+def load_history() -> List[Dict]: return _read_json(_user_file("history"), [])
+def save_history(arr: List[Dict]): _write_json(_user_file("history"), arr)
 
-    letters = ["A","B","C","D","E"]
-    default_idx = letters.index(st.session_state.quiz_answers[row["id"]]) if row["id"] in st.session_state.quiz_answers else None
-    choice = st.radio("", letters, index=default_idx, format_func=lambda L: row[L], label_visibility="collapsed", key=f"q_{row['id']}")
-    st.session_state.quiz_answers[row["id"]] = choice
+def record_attempt(topic: str, qid: str, correct: bool):
+    hist = load_history()
+    hist.append({"ts": int(time.time()), "topic": topic, "id": qid, "correct": bool(correct)})
+    save_history(hist)
+    prog = load_progress()
+    rec = prog.setdefault(topic, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
+    rec["total"] += 1
+    if correct: rec["correct"] += 1
+    rec["last_seen"] = int(time.time())
+    if rec["total"] >= 5 and rec["correct"]/max(1,rec["total"]) >= 0.8:
+        rec["mastered"] = True
+    save_progress(prog)
 
-    c1, c2, c3, c4 = st.columns([1,2,2,1])
-    with c1:
-        if st.button("Reveal", key=f"rev_{i}"):
-            st.session_state.quiz_revealed.add(row["id"])
-    with c2:
-        if st.button("Previous", disabled=(i==0)):
-            st.session_state.quiz_idx = max(0, i-1); st.rerun()
-    with c3:
-        if st.button("Next", disabled=(i==len(pool)-1)):
-            st.session_state.quiz_idx = min(len(pool)-1, i+1); st.rerun()
-    with c4:
-        if st.button("Finish"):
-            st.session_state.quiz_finished = True
+def overall_accuracy() -> float:
+    prog = load_progress()
+    tot = sum(v.get("total",0) for v in prog.values())
+    cor = sum(v.get("correct",0) for v in prog.values())
+    return (cor / tot) if tot else 0.0
 
-    if row["id"] in st.session_state.quiz_revealed:
-        is_correct = (choice == row["correct"])
-        verdict_class = "verdict-ok" if is_correct else "verdict-err"
-        verdict_text = "Correct" if is_correct else "Incorrect"
-        st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
-        if str(row["explanation"]).strip():
-            st.markdown(row["explanation"], unsafe_allow_html=True)
-        # Log attempt once
-        key = f"scored_{row['id']}"
-        if not st.session_state.get(key, False):
-            record_attempt(row.get("subject",""), row["id"], is_correct)
-            if st.session_state.get("quiz_mode") == "spaced":
-                sr_update(row["id"], is_correct)
-            st.session_state[key] = True
+def accuracy_timeseries(days: int = 30) -> List[Tuple[str,float,int]]:
+    hist = load_history()
+    if not hist: return []
+    today = dt.date.today()
+    by_day = {}
+    for i in range(days-1, -1, -1):
+        d = today - dt.timedelta(days=i)
+        key = d.strftime("%Y-%m-%d")
+        by_day[key] = {"c":0, "t":0}
+    for h in hist:
+        d = dt.datetime.fromtimestamp(h["ts"]).date().strftime("%Y-%m-%d")
+        if d in by_day:
+            by_day[d]["t"] += 1
+            by_day[d]["c"] += int(bool(h["correct"]))
+    seq = []
+    for d, rec in by_day.items():
+        acc = (rec["c"]/rec["t"]) if rec["t"] else 0.0
+        seq.append((d, acc, rec["t"]))
+    return seq
 
-    if st.session_state.quiz_finished:
-        correct_n = sum(
-            1 for qid, ans in st.session_state.quiz_answers.items()
-            if pool.set_index("id").loc[qid]["correct"] == ans and qid in st.session_state.quiz_revealed
-        )
-        revealed_n = sum(1 for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed)
-        st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
+def topic_strengths(k:int=5) -> Tuple[List[Tuple[str,float,int]], List[Tuple[str,float,int]]]:
+    prog = load_progress()
+    items = []
+    for t, rec in prog.items():
+        n = rec.get("total",0)
+        acc = (rec.get("correct",0) / n) if n else 0.0
+        items.append((t, acc, n))
+    tried = [x for x in items if x[2] >= 5] or items
+    weakest = sorted(tried, key=lambda x: x[1])[:k]
+    strongest = sorted(tried, key=lambda x: x[1], reverse=True)[:k]
+    return strongest, weakest
 
-# ------------------ Router ------------------
-view = st.session_state.get("view", "dashboard")
-if view == "topics":
-    view_topics()
-elif view == "review":
-    view_review()
-elif view == "make_quiz":
-    view_make_quiz()
-elif view == "quiz":
-    view_quiz()
-else:
-    view_dashboard()
+# ============================== SR (SM-2 lite) ==============================
+def _now_day_ts() -> int:
+    today = dt.date.today()
+    return int(time.mktime(dt.datetime(today.year,today.month,today.day).timetuple()))
+
+def load_sr() -> Dict[str, Dict]: return _read_json(_user_file("sr"), {})
+def save_sr(srobj: Dict[str, Dict]): _write_json(_user_file("sr"), srobj)
+
+def _init_sr_if_needed(qid: str):
+    sr = load_sr()
+    if qid not in sr:
+        sr[qid] = {"reps": 0, "interval": 0.0, "ease": 2.5, "due_ts": _now_day_ts(), "last_result": None}
+        save_sr(sr)
+
+def sr_due_ids(limit:int=20, subjects: Optional[List[str]]=None) -> List[str]:
+    df = load_questions_for_subjects(subjects or [])
+    if df.empty: return []
+    sr = load_sr(); today = _now_day_ts(); ids=[]
+    for _, r in df.iterrows():
+        qid = r["id"]; d = sr.get(qid); due_ts = d["due_ts"] if d else today
+        if due_ts <= today: ids.append(qid)
+    if not ids:
+        upcoming = sorted(((q, sr.get(q, {"due_ts":today})["due_ts"]) for q in df["id"].tolist()), key=lambda x:x[1])
+        ids = [q for q,_ in upcoming[:limit]]
+    return ids[:limit]
+
+def sr_update(qid:str, was_correct:bool):
+    _init_sr_if_needed(qid)
+    sr = load_sr(); rec = sr[qid]
+    quality = 4 if was_correct else 2
+    ease = rec.get("ease",2.5); reps = rec.get("reps",0); interval = rec.get("interval",0.0)
+    if was_correct:
+        if reps==0: interval=1
+        elif reps==1: interval=6
+        else: interval=round(interval*ease)
+        reps += 1
+        ease = max(1.3, ease + 0.1 - (5-quality)*(0.08 + (5-quality)*0.02))
+    else:
+        reps = 0; interval = 1; ease = max(1.3, ease - 0.2)
+    due_date = dt.date.today() + dt.timedelta(days=int(interval))
+    due_ts = int(time.mktime(dt.datetime(due_date.year,due_date.month,due_date.day).timetuple()))
+    rec.update({"reps":reps,"interval":float(interval),"ease":float(ease),"due_ts":due_ts,"last_result":int(was_correct)})
+    sr[qid]=rec; save_sr(sr)
+
+# ============================== SESSION DEFAULTS ==============================
+def ensure_session_keys():
+    st.session_state.setdefault("auth_user", None)
+    st.session_state.setdefault("view", "dashboard")
+    st.session_state.setdefault("active_topic", None)
+    st.session_state.setdefault("quiz_mode", "normal")
+    st.session_state.setdefault("quiz_pool", None)
+    st.session_state.setdefault("quiz_idx", 0)
+    st.session_state.setdefault("quiz_answers", {})
+    st.session_state.setdefault("quiz_revealed", set())
+    st.session_state.setdefault("quiz_finished", False)
