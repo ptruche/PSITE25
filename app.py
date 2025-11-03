@@ -1,3 +1,11 @@
+import traceback, sys
+try:
+    import psite_core
+except Exception:
+    st.write("Import failure:\n", traceback.format_exc())
+    raise
+
+
 # app.py
 import streamlit as st
 import pandas as pd
