@@ -19,6 +19,41 @@ apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
+# Light add-on styles (non-intrusive, works with your theme.css)
+st.markdown("""
+<style>
+/* Donut rings for dashboard KPIs */
+.kpi-wrap{display:flex;gap:24px;flex-wrap:wrap;}
+.kpi-card{border:1px solid var(--border,#eef0f3);border-radius:16px;background:#fff;
+  padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;align-items:center;gap:16px;}
+.kpi-ring{width:84px;height:84px;border-radius:50%;
+  background:conic-gradient(var(--accent,#1d4ed8) calc(var(--val,0)*1%), #e9eef8 0);
+  display:grid;place-items:center;}
+.kpi-ring > div{background:#fff;border-radius:50%;width:58px;height:58px;display:grid;place-items:center;
+  font-weight:700;font-size:1rem;color:#111;border:1px solid #f0f3f8;}
+.kpi-meta{display:flex;flex-direction:column;gap:2px;}
+.kpi-label{font-size:.92rem;color:#374151;font-weight:600;}
+.kpi-sub{font-size:.82rem;color:#6b7280}
+
+/* Topic cards: keep your existing look but tighten actions inside the card */
+.topic-card .topic-actions{margin-top:.35rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
+.btn.sm{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;font-size:.84rem;cursor:pointer;}
+.btn.sm.green{background:#e9f9ef;border-color:#b7e3c4;color:#166534}
+.topic-meta{font-size:.78rem;color:#6b7280}
+
+/* Small status dots for Review and Quiz readiness */
+.dot{width:9px;height:9px;border-radius:50%;background:#d1d5db;display:inline-block;margin-right:6px;
+  border:1px solid #cbd5e1;transform:translateY(1px);}
+.dot.green{background:#22c55e;border-color:#22c55e;}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:.18rem .5rem;border:1px solid #e5e7eb;
+  border-radius:999px;font-size:.78rem;color:#374151;background:#fff;}
+
+/* Header overlap protection already handled by apply_base_theme()
+   but ensure brand shifts when sidebar toggles */
+[data-testid="stSidebar"] ~ section.main .app-header {left:0;right:0;}
+</style>
+""", unsafe_allow_html=True)
+
 # ------------------ Header ------------------
 st.markdown("""
 <div class="app-header">
@@ -73,26 +108,30 @@ def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
     has_quiz   = total_q >= 5
 
     # Compose button classes (for visual consistency with your theme.css)
-    review_cls = "btn sm" + (" green" if has_review else "")
-    quiz_cls   = "btn sm" + (" green" if has_quiz else "")
+    review_btn_cls = "btn sm" + (" green" if has_review else "")
+    quiz_btn_cls   = "btn sm" + (" green" if has_quiz else "")
 
-    # One compact bubble with title, progress, and 2 integrated small buttons
+    # Status dots (left of labels)
+    review_dot_cls = "dot" + (" green" if has_review else "")
+    quiz_dot_cls   = "dot" + (" green" if has_quiz else "")
+
+    # One compact bubble with title, progress, and actions INSIDE the card
     st.markdown(f"""
     <div class="topic-card">
       <div class="topic-title">{topic}</div>
       <div class="topic-row">
         <div class="meter"><span style="width:{pct_done}%"></span></div>
-        <div style="width:42px;text-align:right;font-size:.82rem;">{pct_done}%</div>
+        <div style="width:48px;text-align:right;font-size:.82rem;">{pct_done}%</div>
       </div>
-      <div class="topic-actions" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-        <span class="{review_cls}" style="pointer-events:none;">Review</span>
-        <span class="{quiz_cls}" style="pointer-events:none;">Quiz</span>
-        <span class="topic-meta">Q: {attempted}/{total_q}{' • Review ready' if has_review else ''}</span>
+      <div class="topic-actions">
+        <span class="badge"><span class="{review_dot_cls}"></span>Review</span>
+        <span class="badge"><span class="{quiz_dot_cls}"></span>Quiz</span>
+        <span class="topic-meta">Q: {attempted}/{total_q}</span>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Real Streamlit action buttons that don't change the URL (no logout)
+    # Real Streamlit action buttons (no URL change → no logout symptoms)
     b1, b2 = st.columns(2)
     with b1:
         if st.button("Review", key=f"rev_{topic}", use_container_width=True):
@@ -124,42 +163,49 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
+def _safe_pct(numer: int, denom: int) -> int:
+    return int(round(100 * numer / denom)) if denom else 0
+
 # ------------------ Views ------------------
 def view_dashboard():
+    # compute totals for % done
+    q_count = questions_count_by_topic()
+    prog = load_progress()
+    total_q_all = sum(int(q_count.get(t, 0)) for t in q_count.keys())
+    attempted_all = sum(int(prog.get(t, {}).get("total", 0)) for t in q_count.keys())
+    pct_done = _safe_pct(attempted_all, total_q_all)
+
+    # % correct
+    pct_correct = int(round(overall_accuracy() * 100))
+
     st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-    acc = overall_accuracy()
-    st.metric("Overall Correct", f"{int(round(acc*100))}%")
 
-    series = accuracy_timeseries(days=30)
-    if series:
-        dates = [d for d,_,_ in series]
-        accs  = [a for _,a,_ in series]
-        counts= [n for _,_,n in series]
-
-        # Streamlit-native charts (no matplotlib)
-        df_acc = pd.DataFrame({"date": dates, "accuracy_%": [a*100 for a in accs]}).set_index("date")
-        df_cnt = pd.DataFrame({"date": dates, "attempts": counts}).set_index("date")
-
-        st.markdown("**Last 30 days — Accuracy (%)**")
-        st.line_chart(df_acc, height=220)
-        st.markdown("**Last 30 days — Attempts**")
-        st.bar_chart(df_cnt, height=220)
-    else:
-        st.info("No attempts yet. Start a quiz to build your trend.")
-
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    strong, weak = topic_strengths(k=5)
+    # Two clean donuts only
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("**Strongest topics**")
-        if not strong: st.caption("—")
-        for t, a, n in strong:
-            st.write(f"{t} — {int(a*100)}% ({n} q)")
+        st.markdown(f"""
+        <div class="kpi-card">
+          <div class="kpi-ring" style="--val:{pct_done};">
+            <div>{pct_done}%</div>
+          </div>
+          <div class="kpi-meta">
+            <div class="kpi-label">Completed</div>
+            <div class="kpi-sub">{attempted_all} of {total_q_all} questions attempted</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
     with c2:
-        st.markdown("**Weakest topics**")
-        if not weak: st.caption("—")
-        for t, a, n in weak:
-            st.write(f"{t} — {int(a*100)}% ({n} q)")
+        st.markdown(f"""
+        <div class="kpi-card">
+          <div class="kpi-ring" style="--val:{pct_correct};">
+            <div>{pct_correct}%</div>
+          </div>
+          <div class="kpi-meta">
+            <div class="kpi-label">Accuracy</div>
+            <div class="kpi-sub">Across all attempted questions</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 def view_topics():
     st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
@@ -188,7 +234,7 @@ def view_topics():
         st.info("No topics match your filter.")
         return
 
-    # Render cards in 3 columns (compact bubble per topic)
+    # Render cards in 3 columns (compact bubble per topic, with buttons & status dots)
     cols = st.columns(3)
     for i, t in enumerate(topics):
         with cols[i % 3]:
@@ -250,7 +296,6 @@ def view_quiz():
 
     letters = ["A","B","C","D","E"]
     prev_choice = st.session_state.quiz_answers.get(row["id"])
-    # radio needs a valid index; fall back to 0 if none
     default_idx = letters.index(prev_choice) if prev_choice in letters else 0
     choice = st.radio(
         "",
