@@ -41,46 +41,69 @@ CREATE_TOPIC_DIRS = True  # ensure subfolders for known topics
 
 # ============================== THEME ==============================
 def apply_base_theme():
-    if os.path.exists(THEME_CSS):
-        with open(THEME_CSS, "r", encoding="utf-8") as f:
-            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    # No fixed custom header; let Streamlit handle the layout so content expands naturally
     st.markdown("""
     <style>
-      :root { --header-h: 64px; --accent:#1d4ed8; --border:#eef0f3; }
-      [data-testid="stSidebar"] { min-width: 300px !important; width: 300px !important; }
-      [data-testid="stSidebarNav"] { display:none !important; }
+      :root { --accent:#1d4ed8; --border:#eef0f3; }
 
-      .app-header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:#fff;
-        border-bottom:1px solid var(--border);z-index:1000;display:flex;align-items:center;}
-      .app-header-inner{max-width:1200px;margin:0 auto;width:100%;padding:0 12px;
-        display:flex;align-items:center;justify-content:space-between;}
-      .app-title{font-weight:800;font-size:1.08rem;}
+      /* Sidebar brand */
+      .sb-brand{
+        font-weight:900; font-size:1.15rem; letter-spacing:.2px; margin:.2rem 0 1rem 0;
+      }
+      .sb-brand span{ color: var(--accent); }
 
-      header{visibility:hidden;height:0!important;}
-      .block-container{padding-top:calc(var(--header-h) + 12px)!important;}
+      /* Make the app breathe at the top (no hidden header tricks) */
+      .block-container{ padding-top: 10px !important; }
 
-      .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
+      /* Keep things sleek */
+      .section-title{ font-weight:700; margin:.2rem 0 .6rem 0; }
+
       .divider{height:1px;background:var(--border);margin:1rem 0;}
 
-      .topic-card{border:1px solid var(--border);border-radius:14px;background:#fff;padding:.75rem;
-        box-shadow:0 1px 4px rgba(0,0,0,.03);display:flex;gap:.5rem;flex-direction:column;}
+      .topic-card{
+        border:1px solid var(--border);border-radius:14px;background:#fff;padding:.75rem;
+        box-shadow:0 1px 4px rgba(0,0,0,.03);display:flex;gap:.55rem;flex-direction:column;
+      }
       .topic-title{font-weight:600;font-size:.98rem;line-height:1.2;}
       .topic-row{display:flex;align-items:center;gap:.6rem;}
       .meter{flex:1;height:8px;background:#f2f5fb;border-radius:999px;overflow:hidden;}
       .meter>span{display:block;height:100%;background:var(--accent);width:0%;}
-
-      .pill{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;cursor:pointer;font-size:.85rem;}
-      .pill.secondary{background:#f7f9fc;}
+      .topic-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
+      .btn{display:inline-flex;align-items:center;gap:.4rem;border:1px solid #dbe2ea;border-radius:999px;
+           padding:.28rem .66rem;background:#fff;cursor:pointer;font-size:.85rem;text-decoration:none;}
+      .btn.sm{font-size:.82rem;padding:.22rem .58rem;}
+      .btn.green{background:#e8f6ef;border-color:#b8e4cc;}
+      .topic-meta{font-size:.8rem;color:#6b7280;margin-left:auto;}
 
       .q-prompt { border:1px solid var(--border); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
       .verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
       .verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
       .verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
 
-      /* Make sure header doesn't get occluded when sidebar collapses */
-      [data-testid="stSidebar"] ~ section.main .app-header {left:0;right:0;}
+      /* Circle stats (dashboard) */
+      .circle-stat{display:flex;flex-direction:column;align-items:center;gap:.4rem;}
+      .circle{
+        --val: 0.0;
+        width:110px;height:110px;border-radius:50%;
+        background:
+          radial-gradient(closest-side, #fff 78%, transparent 80% 100%),
+          conic-gradient(var(--accent) calc(var(--val)*1turn), #eef2f9 0);
+        display:flex;align-items:center;justify-content:center;
+        font-weight:800;font-size:1.1rem;color:#111;
+        border:1px solid var(--border);
+      }
+      .circle > span{ transform: translateY(-1px); }
+      .circle + .label{font-size:.9rem;color:#374151}
     </style>
+    <script>
+      // Optional: set progress values for circle stats (reads data-value attribute)
+      for (const el of window.parent.document.querySelectorAll('.circle')) {
+        const v = parseFloat(el.getAttribute('data-value') || '0');
+        el.style.setProperty('--val', isFinite(v) ? v : 0);
+      }
+    </script>
     """, unsafe_allow_html=True)
+
 
 # ============================== SIMPLE JSON I/O ==============================
 def _read_json(path, default):
