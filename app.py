@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components  # kept in case your theme uses it
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
@@ -9,17 +8,18 @@ from psite_core import (
     get_category_map, get_topics, resolve_review_path,
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
-    accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
-    load_progress, topic_to_slug, get_review_word_count,
+    sr_due_ids, sr_update, load_progress,
+    topic_to_slug, get_review_word_count,  # used for readiness badges
 )
 
 # =============== App shell / theme ===============
-st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="PSITE Mastery", page_icon=None,
+                   layout="wide", initial_sidebar_state="expanded")
 apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# Light add-on styles (non-intrusive, works with your theme.css)
+# Light add-on styles (keeps your theme.css intact)
 st.markdown("""
 <style>
 /* Donut rings for dashboard KPIs */
@@ -35,22 +35,33 @@ st.markdown("""
 .kpi-label{font-size:.92rem;color:#374151;font-weight:600;}
 .kpi-sub{font-size:.82rem;color:#6b7280}
 
-/* Topic cards: keep your existing look but tighten actions inside the card */
-.topic-card .topic-actions{margin-top:.35rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
-.btn.sm{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;font-size:.84rem;cursor:pointer;}
-.btn.sm.green{background:#e9f9ef;border-color:#b7e3c4;color:#166534}
-.topic-meta{font-size:.78rem;color:#6b7280}
+/* Meter */
+.meter{flex:1;height:8px;background:#f2f5fb;border-radius:999px;overflow:hidden;}
+.meter>span{display:block;height:100%;background:var(--accent,#1d4ed8);width:0%;}
 
-/* Small status dots for Review and Quiz readiness */
+/* Inside-card badges */
 .dot{width:9px;height:9px;border-radius:50%;background:#d1d5db;display:inline-block;margin-right:6px;
   border:1px solid #cbd5e1;transform:translateY(1px);}
 .dot.green{background:#22c55e;border-color:#22c55e;}
 .badge{display:inline-flex;align-items:center;gap:6px;padding:.18rem .5rem;border:1px solid #e5e7eb;
   border-radius:999px;font-size:.78rem;color:#374151;background:#fff;}
 
-/* Header overlap protection already handled by apply_base_theme()
-   but ensure brand shifts when sidebar toggles */
+/* Tighten card typography */
+.topic-title{font-weight:600;font-size:.98rem;line-height:1.2;margin-bottom:.25rem;}
+.topic-row{display:flex;align-items:center;gap:.6rem;margin:.25rem 0 .35rem 0;}
+.topic-meta{font-size:.78rem;color:#6b7280}
+
+/* Make brand not get covered by sidebar toggle */
 [data-testid="stSidebar"] ~ section.main .app-header {left:0;right:0;}
+.app-header{position:fixed;top:0;left:0;right:0;height:64px;background:#fff;
+  border-bottom:1px solid var(--border,#eef0f3);z-index:1000;display:flex;align-items:center;}
+.app-header-inner{max-width:1200px;margin:0 auto;width:100%;padding:0 12px;
+  display:flex;align-items:center;justify-content:space-between;}
+.app-title{font-weight:800;font-size:1.08rem;}
+header{visibility:hidden;height:0!important;}
+.block-container{padding-top:calc(64px + 12px)!important;}
+.section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
+.divider{height:1px;background:var(--border,#eef0f3);margin:1rem 0;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -96,60 +107,59 @@ with st.sidebar:
     auth_logout_button()
 
 # ------------------ Utilities ------------------
+def _safe_pct(numer: int, denom: int) -> int:
+    return int(round(100 * numer / denom)) if denom else 0
+
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
-    # Progress
+    """Single visual 'box' with title, progress bar, badges, and buttons INSIDE the box."""
     total_q = int(q_total_map.get(topic, 0))
     attempted = int(progress_map.get(topic, {}).get("total", 0))
-    pct_done = int(100 * attempted / total_q) if total_q else 0
+    pct_done = _safe_pct(attempted, total_q)
 
-    # Readiness signals
     review_words = get_review_word_count(topic)
     has_review = review_words >= 250
     has_quiz   = total_q >= 5
 
-    # Compose button classes (for visual consistency with your theme.css)
-    review_btn_cls = "btn sm" + (" green" if has_review else "")
-    quiz_btn_cls   = "btn sm" + (" green" if has_quiz else "")
-
-    # Status dots (left of labels)
     review_dot_cls = "dot" + (" green" if has_review else "")
     quiz_dot_cls   = "dot" + (" green" if has_quiz else "")
 
-    # One compact bubble with title, progress, and actions INSIDE the card
-    st.markdown(f"""
-    <div class="topic-card">
-      <div class="topic-title">{topic}</div>
-      <div class="topic-row">
-        <div class="meter"><span style="width:{pct_done}%"></span></div>
-        <div style="width:48px;text-align:right;font-size:.82rem;">{pct_done}%</div>
-      </div>
-      <div class="topic-actions">
-        <span class="badge"><span class="{review_dot_cls}"></span>Review</span>
-        <span class="badge"><span class="{quiz_dot_cls}"></span>Quiz</span>
-        <span class="topic-meta">Q: {attempted}/{total_q}</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Real Streamlit action buttons (no URL change → no logout symptoms)
-    b1, b2 = st.columns(2)
-    with b1:
-        if st.button("Review", key=f"rev_{topic}", use_container_width=True):
-            st.session_state.active_topic = topic
-            st.session_state.view = "review"
-            st.rerun()
-    with b2:
-        if st.button("Quiz", key=f"quiz_{topic}", use_container_width=True):
-            df = load_questions_for_subjects([topic])
-            st.session_state.active_topic = topic
-            st.session_state.quiz_pool = df.reset_index(drop=True)
-            st.session_state.quiz_idx = 0
-            st.session_state.quiz_answers = {}
-            st.session_state.quiz_revealed = set()
-            st.session_state.quiz_finished = False
-            st.session_state.quiz_mode = "normal"
-            st.session_state.view = "quiz"
-            st.rerun()
+    with st.container(border=True):
+        # Title
+        st.markdown(f"<div class='topic-title'>{topic}</div>", unsafe_allow_html=True)
+        # Progress row
+        prog_cols = st.columns([1, 8, 1])
+        with prog_cols[1]:
+            st.markdown(f"<div class='meter'><span style='width:{pct_done}%;'></span></div>", unsafe_allow_html=True)
+        with prog_cols[2]:
+            st.markdown(f"<div style='text-align:right;font-size:.82rem;'>{pct_done}%</div>", unsafe_allow_html=True)
+        # Badges line (inside box)
+        st.markdown(
+            f"<div style='display:flex;align-items:center;gap:.5rem;margin:.35rem 0;'>"
+            f"<span class='badge'><span class='{review_dot_cls}'></span>Review</span>"
+            f"<span class='badge'><span class='{quiz_dot_cls}'></span>Quiz</span>"
+            f"<span class='topic-meta'>Q: {attempted}/{total_q}</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+        # Buttons (still inside box)
+        b1, b2 = st.columns(2)
+        with b1:
+            if st.button("Review", key=f"rev_{topic}", use_container_width=True):
+                st.session_state.active_topic = topic
+                st.session_state.view = "review"
+                st.rerun()
+        with b2:
+            if st.button("Quiz", key=f"quiz_{topic}", use_container_width=True):
+                df = load_questions_for_subjects([topic])
+                st.session_state.active_topic = topic
+                st.session_state.quiz_pool = df.reset_index(drop=True)
+                st.session_state.quiz_idx = 0
+                st.session_state.quiz_answers = {}
+                st.session_state.quiz_revealed = set()
+                st.session_state.quiz_finished = False
+                st.session_state.quiz_mode = "normal"
+                st.session_state.view = "quiz"
+                st.rerun()
 
 def _start_quiz_from_topics(selected_topics: list, n: int):
     df = load_questions_for_subjects(selected_topics)
@@ -163,24 +173,16 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
-def _safe_pct(numer: int, denom: int) -> int:
-    return int(round(100 * numer / denom)) if denom else 0
-
 # ------------------ Views ------------------
 def view_dashboard():
-    # compute totals for % done
     q_count = questions_count_by_topic()
     prog = load_progress()
     total_q_all = sum(int(q_count.get(t, 0)) for t in q_count.keys())
     attempted_all = sum(int(prog.get(t, {}).get("total", 0)) for t in q_count.keys())
     pct_done = _safe_pct(attempted_all, total_q_all)
-
-    # % correct
     pct_correct = int(round(overall_accuracy() * 100))
 
     st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-
-    # Two clean donuts only
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -234,7 +236,6 @@ def view_topics():
         st.info("No topics match your filter.")
         return
 
-    # Render cards in 3 columns (compact bubble per topic, with buttons & status dots)
     cols = st.columns(3)
     for i, t in enumerate(topics):
         with cols[i % 3]:
@@ -328,7 +329,6 @@ def view_quiz():
         st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
         if str(row.get("explanation","")).strip():
             st.markdown(row["explanation"], unsafe_allow_html=True)
-        # Log attempt once per question id
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
             record_attempt(row.get("subject",""), row["id"], is_correct)
