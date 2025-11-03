@@ -1,11 +1,11 @@
-# psite_core.py — core services for PSITE Mastery
+# psite_core.py
 import os, re, glob, json, time, secrets, base64, hashlib, hmac, datetime as dt
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-# ============================== OPTIONAL COOKIES ==============================
+# Optional cookie manager
 COOKIE_AVAILABLE = True
 try:
     from streamlit_cookies_manager import EncryptedCookieManager
@@ -17,23 +17,14 @@ BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR      = os.path.join(BASE_DIR, "data")
 QUESTIONS_DIR = os.path.join(DATA_DIR, "questions")
 REVIEWS_DIR   = os.path.join(DATA_DIR, "reviews")
+STATE_DIR     = os.path.join(DATA_DIR, "state")
+USERS_JSON    = os.path.join(STATE_DIR, "users.json")
+SECRET_FILE   = os.path.join(STATE_DIR, "secret.key")
+THEME_CSS     = os.path.join(BASE_DIR, "theme.css")
 
-# Optional mirrors (supported but not required)
-PAGES_DATA_DIR              = os.path.join(BASE_DIR, "pages", "data")
-PAGES_QUESTIONS_DIR         = os.path.join(PAGES_DATA_DIR, "questions")
-PAGES_REVIEWS_DIR           = os.path.join(PAGES_DATA_DIR, "reviews")
+for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR]:
+    os.makedirs(p, exist_ok=True)
 
-STATE_DIR   = os.path.join(DATA_DIR, "state")
-USERS_JSON  = os.path.join(STATE_DIR, "users.json")
-SECRET_FILE = os.path.join(STATE_DIR, "secret.key")
-THEME_CSS   = os.path.join(BASE_DIR, "theme.css")
-
-for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR,
-          PAGES_DATA_DIR, PAGES_QUESTIONS_DIR, PAGES_REVIEWS_DIR]:
-    try: os.makedirs(p, exist_ok=True)
-    except Exception: pass
-
-# Ensure subfolders for each topic (created in question roots)
 CREATE_TOPIC_DIRS = True
 
 # ============================== THEME ==============================
@@ -43,29 +34,40 @@ def apply_base_theme():
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     st.markdown("""
     <style>
-      /* Sidebar width and hide native nav */
+      /* Sidebar should not reserve dead space when collapsed */
       [data-testid="stSidebar"] { min-width: 300px !important; width: 300px !important; }
-      [data-testid="stSidebarNav"] { display:none !important; }
-      :root { --header-h: 64px; --accent:#1d4ed8; --border:#eef0f3; }
-      /* Fixed app header to prevent top clipping */
+      .stSidebar.collapsed ~ div[data-testid="stMain"] .block-container { max-width: 1200px !important; }
+
+      :root { --header-h: 64px; --accent:#1d4ed8; --border:#eef0f3; --ok:#10b981; --bg:#ffffff; --muted:#6b7280; }
+      header { visibility:hidden; height:0!important; }
       .app-header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:#fff;
         border-bottom:1px solid var(--border);z-index:1000;display:flex;align-items:center;}
       .app-header-inner{max-width:1200px;margin:0 auto;width:100%;padding:0 12px;
         display:flex;align-items:center;justify-content:space-between;}
-      .app-title{font-weight:800;font-size:1.08rem;}
-      header{visibility:hidden;height:0!important;}
+      .app-title{font-weight:800;font-size:1.08rem; white-space:nowrap;}
       .block-container{padding-top:calc(var(--header-h) + 12px)!important;}
-      /* UI atoms */
+
       .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
       .divider{height:1px;background:var(--border);margin:1rem 0;}
-      .topic-card{border:1px solid var(--border);border-radius:14px;background:#fff;padding:.75rem;
-        box-shadow:0 1px 4px rgba(0,0,0,.03);display:flex;gap:.5rem;flex-direction:column;}
-      .topic-title{font-weight:600;font-size:.98rem;line-height:1.2;}
+
+      .topic-card{border:1px solid var(--border);border-radius:14px;background:var(--bg);
+        padding:.9rem .9rem .7rem .9rem; box-shadow:0 1px 4px rgba(0,0,0,.03);
+        display:flex;flex-direction:column;gap:.55rem;}
+      .topic-title{font-weight:700;font-size:1rem;line-height:1.25;}
       .topic-row{display:flex;align-items:center;gap:.6rem;}
       .meter{flex:1;height:8px;background:#f2f5fb;border-radius:999px;overflow:hidden;}
       .meter>span{display:block;height:100%;background:var(--accent);width:0%;}
+      .topic-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;}
+      .btn{border:1px solid #dbe2ea;border-radius:10px;padding:.28rem .55rem;background:#fff;
+           cursor:pointer;font-size:.80rem;line-height:1.1; text-decoration:none; color:#111;}
+      .btn.sm{padding:.22rem .5rem;font-size:.78rem;border-radius:9px;}
+      .btn.green{background:var(--ok); color:#fff; border-color:#18c08d;}
+      .btn:hover{filter:brightness(0.98);}
+      .topic-meta{font-size:.82rem;color:var(--muted);}
+
       .pill{border:1px solid #dbe2ea;border-radius:999px;padding:.28rem .6rem;background:#fff;cursor:pointer;font-size:.85rem;}
       .pill.secondary{background:#f7f9fc;}
+
       .q-prompt { border:1px solid var(--border); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
       .verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
       .verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
@@ -365,40 +367,25 @@ CATEGORY_TO_TOPICS = {
         "Testicular Tumors","Wilms Tumor, Renal Cell Carcinoma, and Hemihypertrophy",
     ],
 }
-
 ALL_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
 def get_topics() -> List[str]: return ALL_TOPICS
 def get_category_map() -> dict: return CATEGORY_TO_TOPICS
 
-# ============================== SLUG HELPERS ==============================
+# Helpers for slug <-> topic
 def slugify(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()[:120]
 
 TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
 SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
-
-def _canon_topic_from_any(name_or_slug: str) -> Optional[str]:
-    """Accept a human topic name or a slug-ish string; return canonical SCORE topic by slug."""
-    if not name_or_slug:
-        return None
-    s = slugify(name_or_slug)
-    return SLUG_TO_TOPIC.get(s)
-
-def question_roots() -> List[str]:
-    """All directories we scan recursively for questions."""
-    roots = [QUESTIONS_DIR, PAGES_QUESTIONS_DIR]
-    return [r for r in roots if os.path.isdir(r)]
+def topic_to_slug(topic: str) -> str: return TOPIC_TO_SLUG.get(topic, slugify(topic))
+def slug_to_topic(slug: str) -> Optional[str]: return SLUG_TO_TOPIC.get(slug)
 
 def ensure_topic_dirs():
-    """Create topic subfolders in all supported question roots so users can drop files easily."""
     if not CREATE_TOPIC_DIRS: return
-    for root in question_roots():
-        try:
-            os.makedirs(root, exist_ok=True)
-            for t, slug in TOPIC_TO_SLUG.items():
-                os.makedirs(os.path.join(root, slug), exist_ok=True)
-        except Exception:
-            pass
+    for t, slug in TOPIC_TO_SLUG.items():
+        os.makedirs(os.path.join(QUESTIONS_DIR, slug), exist_ok=True)
+
+ensure_topic_dirs()
 
 # ============================== QUESTIONS / REVIEWS ==============================
 FRONTMATTER_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.MULTILINE)
@@ -420,23 +407,12 @@ def split_stem_explanation(body: str) -> Tuple[str, str]:
     parts = EXPL_SPLIT_RE.split(body, maxsplit=1)
     return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else (body.strip(), "")
 
-def _iter_question_markdown_files() -> List[str]:
-    files: List[str] = []
-    for root in question_roots():
-        files.extend(sorted(glob.glob(os.path.join(root, "**", "*.md"), recursive=True)))
-    return files
-
 def _infer_subject_from_path(path: str) -> Optional[str]:
-    """Map parent folder name to canonical topic using slugify."""
-    parent = os.path.basename(os.path.dirname(path))
-    return _canon_topic_from_any(parent)
+    parent = os.path.basename(os.path.dirname(path)).lower()
+    return SLUG_TO_TOPIC.get(parent)
 
 def load_questions_frame() -> pd.DataFrame:
-    """
-    Recursively load all *.md question files from supported roots.
-    Canonicalize YAML 'subject' to SCORE topic by slug; if missing, infer from folder.
-    """
-    files = _iter_question_markdown_files()
+    files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True))
     rows = []
     for f in files:
         try:
@@ -444,10 +420,9 @@ def load_questions_frame() -> pd.DataFrame:
                 raw = h.read()
             meta, body = parse_front_matter(raw)
             stem, explanation = split_stem_explanation(body)
-
-            subject_raw = (meta.get("subject", "") or "").strip()
-            subject = _canon_topic_from_any(subject_raw) or _infer_subject_from_path(f) or ""
-
+            subject = (meta.get("subject","") or "").strip()
+            if not subject:
+                subject = _infer_subject_from_path(f) or ""
             rec = {
                 "id": meta.get("id","").strip(),
                 "subject": subject,
@@ -457,30 +432,21 @@ def load_questions_frame() -> pd.DataFrame:
                 "D": meta.get("D","").strip(),
                 "E": meta.get("E","").strip(),
                 "correct": meta.get("correct","").strip().upper(),
-                "stem": stem,
-                "explanation": explanation,
+                "stem": stem, "explanation": explanation,
             }
-
-            if not (rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]):
-                continue  # skip malformed/missing essentials
-
-            rows.append(rec)
+            if rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]:
+                rows.append(rec)
         except Exception:
-            continue  # skip unreadable files
-
+            continue
     if not rows:
         return pd.DataFrame(columns=REQUIRED_COLS)
-
     df = pd.DataFrame(rows)
     for c in REQUIRED_COLS:
         if c not in df.columns: df[c] = ""
         df[c] = df[c].astype(str).str.strip()
     df["correct"] = df["correct"].str.upper()
-
-    # Keep only known topics
     df = df[df["subject"].isin(get_topics())].copy()
-    df = df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
-    return df
+    return df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
 
 def load_questions_for_subjects(subjects: List[str]) -> pd.DataFrame:
     if not subjects: return load_questions_frame()
@@ -489,72 +455,36 @@ def load_questions_for_subjects(subjects: List[str]) -> pd.DataFrame:
     return df[df["subject"].isin(subjects)].reset_index(drop=True)
 
 def resolve_review_path(topic: str) -> Optional[str]:
-    """
-    Find a review markdown for a topic by slug in:
-      - data/reviews/<slug>.md
-      - pages/data/reviews/<slug>.md
-      (Also accept files that start with the slug, e.g., bronchoscopy_v2.md)
-    """
     slug = TOPIC_TO_SLUG.get(topic, slugify(topic))
-    candidates = [
-        os.path.join(REVIEWS_DIR, f"{slug}.md"),
-        os.path.join(PAGES_REVIEWS_DIR, f"{slug}.md"),
-    ]
-    for p in candidates:
-        if os.path.exists(p): return p
-    for base_dir in [REVIEWS_DIR, PAGES_REVIEWS_DIR]:
-        try:
-            for p in sorted(glob.glob(os.path.join(base_dir, "*.md"))):
-                base = os.path.splitext(os.path.basename(p))[0].lower()
-                if base.startswith(slug): return p
-        except Exception:
-            pass
+    exact = os.path.join(REVIEWS_DIR, f"{slug}.md")
+    if os.path.exists(exact): return exact
+    alt = os.path.join(REVIEWS_DIR, f"{topic}.md")
+    if os.path.exists(alt): return alt
+    for p in sorted(glob.glob(os.path.join(REVIEWS_DIR, "*.md"))):
+        base = os.path.splitext(os.path.basename(p))[0].lower()
+        if base.startswith(slug): return p
     return None
+
+def get_review_word_count(topic: str) -> int:
+    """Return word count of the review markdown for the topic, 0 if missing."""
+    p = resolve_review_path(topic)
+    if not p: return 0
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            txt = f.read()
+        # crude word count (strip code fences/links)
+        txt = re.sub(r"```[\\s\\S]*?```", " ", txt)
+        txt = re.sub(r"<[^>]+>", " ", txt)
+        txt = re.sub(r"\\[.*?\\]\\(.*?\\)", " ", txt)
+        words = re.findall(r"[A-Za-z0-9_’']+", txt)
+        return len(words)
+    except Exception:
+        return 0
 
 def questions_count_by_topic() -> Dict[str, int]:
     df = load_questions_frame()
     if df.empty: return {t:0 for t in get_topics()}
     return df.groupby("subject")["id"].nunique().to_dict()
-
-# -------------- Debug scan --------------
-def debug_scan_report() -> pd.DataFrame:
-    """
-    Per-file diagnostic: shows YAML subject, inferred subject, final mapped subject,
-    and why a file was skipped.
-    """
-    cols = ["file","subject_yaml","parent_folder","subject_final","ok","reason"]
-    out = []
-    files = _iter_question_markdown_files()
-    for f in files:
-        ok = False
-        reason = ""
-        sub_yaml = ""
-        parent = os.path.basename(os.path.dirname(f))
-        sub_final= ""
-        try:
-            with open(f, "r", encoding="utf-8") as h:
-                raw = h.read()
-            meta, body = parse_front_matter(raw)
-            stem, explanation = split_stem_explanation(body)
-            sub_yaml = (meta.get("subject","") or "").strip()
-            sub_final = _canon_topic_from_any(sub_yaml) or _canon_topic_from_any(parent) or ""
-
-            missing = []
-            for k in ["id","correct","A","B","C","D","E"]:
-                if not (meta.get(k,"") or "").strip():
-                    missing.append(k)
-            if not stem.strip():
-                missing.append("stem")
-            if not sub_final:
-                reason = f"Unmappable subject (YAML='{sub_yaml}' parent='{parent}')"
-            elif missing:
-                reason = "Missing fields: " + ", ".join(missing)
-            else:
-                ok = True
-        except Exception as e:
-            reason = f"Parse error: {type(e).__name__}"
-        out.append([f, sub_yaml, parent, sub_final, ok, reason])
-    return pd.DataFrame(out, columns=cols)
 
 # ============================== USER STATE / ANALYTICS ==============================
 def _user_file(pathkey: str) -> str:
@@ -688,6 +618,3 @@ def ensure_session_keys():
     st.session_state.setdefault("quiz_answers", {})
     st.session_state.setdefault("quiz_revealed", set())
     st.session_state.setdefault("quiz_finished", False)
-
-# Initialize topic folders across roots
-ensure_topic_dirs()
