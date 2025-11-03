@@ -1,307 +1,163 @@
-# Bronchoscopy and Airway Foreign Bodies --- Pediatric Surgery Board Review
+# Bronchoscopy & Airway Foreign Bodies — Pediatric Surgery Review
 
-------------------------------------------------------------------------
+**Purpose.** A concise, professional review for practicing pediatric surgeons preparing for oral boards. Focus: first principles, equipment, technique, intraoperative judgment, and management of common problems.
 
-## Principles
+---
 
-Bronchoscopy is an essential diagnostic and therapeutic tool in
-pediatric surgery.\
-Rigid bronchoscopy provides **definitive airway control and
-intervention**, while flexible bronchoscopy complements it for
-**diagnostic evaluation, dynamic airway assessment, and distal
-visualization**.\
-Foreign body aspiration remains the **most common pediatric
-indication**, but bronchoscopy is also integral to the management of
-**TEF, tracheomalacia, airway trauma, and stenosis**.
+## 1. Principles
 
-------------------------------------------------------------------------
+Bronchoscopy is integral to diagnosis and therapy in pediatric airway disease. Rigid bronchoscopy provides airway control and therapeutic capability; flexible bronchoscopy complements with dynamic assessment and distal visualization. Foreign body aspiration is the most common indication in children【20†Bronchoscopy†L1-L30】【19†Airway Foreign Bodies†L200-L230】.
 
-## Anatomy and Physiologic Considerations
+---
 
-The pediatric airway differs markedly from adults:
+## 2. Anatomy & Physiology Relevant to Bronchoscopy
 
--   **Prominent occiput** → flexion in supine; requires shoulder roll.\
--   **Large tongue and floppy epiglottis** → airway obstruction risk.\
--   **High, anterior larynx (C3--C4)** → "look uphill" for exposure.\
--   **Narrow, compliant trachea** → prone to collapse and mainstem
-    intubation.\
--   **High oxygen consumption and low FRC** → rapid desaturation with
-    apnea.
+- Prominent occiput → neck flexion supine; use shoulder roll for alignment【20†Bronchoscopy†L31-L60】.
+- Large tongue, floppy U-shaped epiglottis, high/anterior larynx (C3–C4) → more difficult exposure【20†Bronchoscopy†L31-L70】.
+- Narrow, compliant trachea; short distance to mainstem; infants desaturate rapidly due to high O₂ consumption and low FRC【20†Bronchoscopy†L70-L110】.
+- Anticipate difficulty in Pierre Robin, Treacher Collins, trisomy 21, mucopolysaccharidoses【20†Bronchoscopy†L60-L90】.
 
-**Difficult airway syndromes:** Pierre Robin, Treacher Collins, Apert,
-trisomy 21, mucopolysaccharidosis.
+**Axis alignment.** Head extension + neck flexion aligns oral–pharyngeal–laryngeal axes (three‑axis alignment)【20†Bronchoscopy†L40-L70】.
 
-------------------------------------------------------------------------
+---
 
-## Indications
+## 3. Indications & Contraindications
 
-  -----------------------------------------------------------------------
-  **Category**                         **Examples**
-  ------------------------------------ ----------------------------------
-  **Congenital**                       TEF, laryngotracheoesophageal
-                                       cleft, tracheomalacia, vascular
-                                       ring
+### Indications
+- Congenital: TEF (define fistula; evaluate cleft, malacia), LTEC, tracheomalacia, vascular compression【20†Bronchoscopy†L90-L130】.
+- Acquired: foreign body, trauma, post‑intubation stenosis, neoplasm【20†Bronchoscopy†L120-L150】.
+- Diagnostic/therapeutic: dynamic evaluation, BAL, biopsy, balloon dilation, laser ablation【20†Bronchoscopy†L150-L200】.
 
-  **Acquired**                         Foreign body, airway trauma,
-                                       post-intubation stenosis, neoplasm
+### Contraindications
+- Absolute: inability to ventilate/oxygenate, unstable hemodynamics.
+- Relative: coagulopathy, cervical spine instability, profound hypoxemia (stabilize first).
 
-  **Diagnostic**                       Recurrent pneumonia, chronic
-                                       cough, persistent wheeze
+---
 
-  **Therapeutic**                      Foreign body extraction, lavage,
-                                       biopsy, balloon dilation, laser
-                                       ablation
-  -----------------------------------------------------------------------
+## 4. Preoperative Preparation
 
-------------------------------------------------------------------------
+**Team/plan.** Confirm role clarity with anesthesia and nursing; review goals, ventilation strategy, bail‑out plan【20†Bronchoscopy†L150-L200】.  
+**Positioning.** Supine, shoulder roll; protect eyes; keep face visible for chest rise【20†Bronchoscopy†L200-L260】.  
+**Equipment checklist.**
 
-## Contraindications
+| Category | Items |
+|---|---|
+| Emergent airway | Appropriately sized ETTs; 14–12G angiocatheter + 3.0 ETT hub; tracheostomy set; BVM; O₂【19†Airway Foreign Bodies†L330-L410】 |
+| Visualization | Miller blades; anterior commissure scope; rigid and/or flexible bronchoscope + light/video【20†Bronchoscopy†L150-L220】 |
+| Instruments | Optical forceps, baskets, Magill forceps, Fogarty catheter, suction; epi (1:10,000), cold saline【20†Bronchoscopy†L210-L260】 |
 
--   **Absolute:** inability to ventilate or oxygenate, unstable
-    hemodynamics.\
--   **Relative:** coagulopathy, cervical spine injury, severe hypoxia
-    (stabilize first).
+**Emergency access.** Surgical cricothyrotomy is generally avoided in small children; if needed, place transtracheal angiocatheter for oxygenation/ventilation and proceed to definitive airway【19†Airway Foreign Bodies†L300-L360】.
 
-------------------------------------------------------------------------
+---
 
-## Preoperative Preparation
+## 5. Instrumentation (reference sizes)
 
--   Verify bronchoscope, optics, suction, and light source
-    functionality.\
--   Discuss procedural goals and ventilation plan with anesthesia.\
--   Supine position with shoulder roll to align oral, pharyngeal, and
-    laryngeal axes.\
--   Prepare for rapid desaturation---short apnea tolerance in infants.\
--   Have emergent airway setup available: 14--12 g angiocatheter + 3.0
-    ETT hub or tracheostomy set.
+### Rigid bronchoscopes (Karl Storz)
+| Sheath × Length | Insertable (cm) | Max OD (mm) | Typical use |
+|---|---:|---:|---|
+| 2.5 × 20 cm | 16 | 4.1 | Neonate/infant |
+| 3.0 × 20 cm | 16 | 5.2 | Toddler |
+| 3.5 × 26 cm | 23 | 5.9 | Preschool |
+| 4.0 × 26 cm | 23 | 7.5 | School‑age/adolescent |
 
-------------------------------------------------------------------------
+### Flexible bronchoscopes (Olympus)
+| Model | OD (mm) | Min ETT (mm) | Channel (mm) | Typical use |
+|---|---:|---:|---:|---|
+| BF‑N20 | 2.2 | 3.0 | — | Neonatal diagnostic |
+| BF‑3C30 | 3.6 | 4.5 | 1.2 | Infant/child |
+| BF‑P20 | 5.0 | 7.5 | 2.2 | Older child |
 
-## Instrumentation
+(Size tables adapted from NaT【20†Bronchoscopy†L220-L320】.)
 
-### Rigid Bronchoscopes (Karl Storz Reference)
+---
 
-  Sheath (mm)   Length (cm)   Typical Use
-  ------------- ------------- -------------------------
-  2.5 × 20      16            Neonate / infant
-  3.0 × 20      16            Toddler
-  3.5 × 26      23            Preschool
-  4.0 × 26      23            School-age / adolescent
+## 6. Technique
 
-**Accessories:** optical forceps, baskets, Fogarty balloon, suction,
-Magill forceps, APC probe.
+### Rigid bronchoscopy
+1. Verify equipment; agree on apnea/ventilation cadence with anesthesia.  
+2. Topical lidocaine to cords (reduce laryngospasm).  
+3. Visualize cords with Miller/anterior commissure scope; pass bronchoscope under direct vision.  
+4. Evaluate **distal airway first**, then withdraw proximally (avoid proximal debris drop‑off).  
+5. Keep retrieved objects **within the barrel** during extraction.  
+6. Reinspect both bronchi; obtain post‑procedure CXR【20†Bronchoscopy†L240-L320】.
 
-### Flexible Bronchoscopes (Olympus Reference)
+### Flexible bronchoscopy
+- Awake/sedated; nasal/oral route; via ETT/LMA/tracheostomy when intubated.  
+- Best for dynamic evaluation (malacia), BAL, distal inspection; limited instrument channel【20†Bronchoscopy†L120-L200】.
 
-  Model     OD (mm)   Min ETT (mm)   Channel (mm)   Use
-  --------- --------- -------------- -------------- ---------------------------
-  BF-N20    2.2       3.0            ---            Neonate (diagnostic only)
-  BF-3C30   3.6       4.5            1.2            Infant--child
-  BF-P20    5.0       7.5            2.2            Older child
+### Choosing modality
+- Rigid: airway control, larger instruments, foreign body removal.  
+- Flexible: dynamic assessment, distal/segmental evaluation; may identify FB, then convert to rigid for extraction【20†Bronchoscopy†L110-L170】.
 
-------------------------------------------------------------------------
+---
 
-## Technique --- Rigid Bronchoscopy
+## 7. Foreign Body Aspiration
 
-1.  Confirm equipment and anesthesia plan.\
-2.  Apply topical lidocaine to cords.\
-3.  Visualize cords using a Miller or anterior commissure scope.\
-4.  Advance bronchoscope through glottis under direct vision.\
-5.  Evaluate distal bronchi first, then withdraw proximally.\
-6.  Coordinate ventilation and inspection with anesthesia.\
-7.  Retrieve object or perform intervention, keeping object **inside the
-    barrel**.\
-8.  Reinspect both bronchi; obtain post-procedure CXR.
+**Epidemiology.** Leading cause of accidental death in infants; 80% <3 years; food/organic objects predominate【19†Airway Foreign Bodies†L80-L150】.  
+**Pathophysiology.** Partial obstruction → “ball‑valve” effect → air trapping and hyperinflation; right mainstem most common site【19†Airway Foreign Bodies†L150-L210】.  
+**Imaging.** Expiratory/decubitus films for air trapping; radiopaque objects are uncommon; CT has near 100% concordance with bronchoscopy when diagnosis uncertain【19†Airway Foreign Bodies†L430-L520】.
 
-------------------------------------------------------------------------
+**Operative approach.**
+- Proceed in OR; minimize positive pressure before removal to prevent distal migration.  
+- Rigid bronchoscopy is preferred for extraction; flexible may assist localization or distal retrieval, then convert to rigid【20†Bronchoscopy†L320-L420】.  
+- Adjuncts: Fogarty balloon past the object; inflate and withdraw; can pass through holes (e.g., pen caps). Laser/APC to release chronically embedded objects within granulation tissue【20†Bronchoscopy†L420-L520】.
 
-## Technique --- Flexible Bronchoscopy
+**Post‑removal.**
+- Reinspect entire tracheobronchial tree; post‑op CXR.  
+- Treat wheeze (laryngeal edema/bronchospasm) with inhaled ± systemic steroids; plan second‑look bronchoscopy if persistent symptoms, residual debris, or exposed cartilage【19†Airway Foreign Bodies†L520-L640】.
 
--   Performed under topical anesthesia or sedation.\
--   Route: nasal, oral (bite block), via ETT, LMA, or tracheostomy.\
--   Allows dynamic airway visualization (malacia), BAL, and selective
-    suctioning.\
--   Retrieval tools: baskets, snares, nets, graspers, or Fogarty
-    catheter alongside the scope.
+---
 
-------------------------------------------------------------------------
+## 8. Other Common Indications
 
-## Rigid vs Flexible
+### TEF/EA
+- Define fistula anatomy; identify proximal pouch, associated laryngeal cleft, and malacia.  
+- Intraop occlusion of distal fistula using bronchoscopic balloon or ETT tip as needed.  
+- Recurrent TEF: instill methylene blue into trachea and observe for dye in esophagus【20†Bronchoscopy†L90-L130】.
 
-  ------------------------------------------------------------------------
-  **Feature**               **Rigid**            **Flexible**
-  ------------------------- -------------------- -------------------------
-  Airway control            Excellent            Limited
+### Inhalation injury / airway trauma
+- Early bronchoscopy for assessment (mucosal edema, debris, ulceration).  
+- Manage with 100% O₂, humidification, bronchodilators; treat CO exposure (carboxyhemoglobin >10%) with O₂; give hydroxocobalamin for suspected cyanide toxicity. (General principles; tailor to clinical context.)
 
-  Visualization             Oropharynx → lobar   Segmental/distal bronchi
-                            bronchi              
+### Dynamic airway lesions
+| Condition | Bronchoscopic finding | Management |
+|---|---|---|
+| Tracheomalacia | >50% collapse on expiration | Observation → CPAP → aortopexy/tracheopexy |
+| Bronchomalacia | Segmental distal collapse | Stepwise as above |
+| Airway stenosis | Fixed narrowing | Balloon dilation, laser, resection |
 
-  Instrument channel        Large (≥ 4 mm)       Small (≤ 2 mm)
+---
 
-  Ventilation               Controlled           Spontaneous
+## 9. Intraoperative Problems — Immediate Management
 
-  Indications               Foreign body,        Dynamic evaluation,
-                            bleeding, airway     lavage, distal lesion
-                            control              
-  ------------------------------------------------------------------------
+| Problem | Likely cause | First steps |
+|---|---|---|
+| Desaturation | Obstruction/apnea | Remove scope lens or scope; ventilate; reoxygenate |
+| Laryngospasm | Instrument irritation | Deepen anesthesia; gentle CPAP; consider succinylcholine |
+| Bleeding | Mucosal trauma/biopsy | Topical epi 1:10,000; tamponade; cold saline; APC if needed |
+| Distal FB migration | PPV or loss of control | Minimize PPV; maintain spontaneous ventilation until secured |
+| Incomplete removal | Fragmentation/granulation | Second pass; Fogarty; laser/APC to free; consider CT if uncertain |
+| Suspected perforation | Rigid scope trauma | Stop; secure airway; CXR; chest tube if pneumothorax; consult thoracic surgery |
 
-------------------------------------------------------------------------
+---
 
-## Management of Common Intraoperative Problems
+## 10. Postoperative Care
 
-  -----------------------------------------------------------------------
-  **Problem**      **Likely Cause**      **Immediate Management**
-  ---------------- --------------------- --------------------------------
-  Desaturation     Airway obstruction,   Remove scope, ventilate,
-                   apnea                 reoxygenate
+- CXR to document clearance and exclude pneumothorax【19†Airway Foreign Bodies†L560-L620】.  
+- Observe for edema/bronchospasm; steroids as indicated.  
+- ICU monitoring for prolonged procedures or tenuous airways.  
+- Repeat bronchoscopy for persistent symptoms, granulation, or residual material【19†Airway Foreign Bodies†L600-L660】.
 
-  Bleeding         Mucosal trauma        Topical epinephrine 1:10,000,
-                                         cold saline, tamponade
+---
 
-  Laryngospasm     Airway irritation     Deepen anesthesia, administer
-                                         succinylcholine
+## 11. High‑Yield Points for Oral Boards
 
-  Distal migration Positive pressure     Minimize PPV, maintain
-  of FB                                  spontaneous ventilation
+1. Rigid bronchoscopy is the preferred modality for pediatric airway foreign body removal.  
+2. Inspect **distal first**, then withdraw proximally; keep the object **within the barrel** on extraction.  
+3. Normal CXR does **not** exclude an aspirated foreign body; CT can avoid negative bronchoscopies in equivocal cases.  
+4. Minimize positive pressure prior to retrieval; coordinate with anesthesia.  
+5. Surgical cricothyrotomy is generally avoided in small children; use a transtracheal angiocatheter if emergent oxygenation is required before definitive airway【19†Airway Foreign Bodies†L300-L360】.
 
-  Incomplete       Fragmentation or      Repeat bronchoscopy, laser or
-  removal          granulation           APC to free object
-  -----------------------------------------------------------------------
+---
 
-------------------------------------------------------------------------
-
-## Foreign Body Aspiration
-
-**Epidemiology:**\
-- Peak \<3 years, 80% organic (nuts, seeds).\
-- Leading cause of accidental death in infants.
-
-**Pathophysiology:**\
-- Partial obstruction → "ball-valve" effect → air trapping, unilateral
-hyperinflation.\
-- Most common site: right mainstem bronchus.
-
-**Diagnosis:**\
-- Decubitus or expiratory radiographs: air trapping.\
-- Normal CXR does not exclude FB; CT nearly 100% concordant with
-bronchoscopy.
-
-**Technique:**\
-- Rigid bronchoscopy under general anesthesia; avoid PPV prior to
-retrieval.\
-- Use Fogarty balloon, optical forceps, or basket.\
-- Chronically embedded objects: laser/APC to release granulation.\
-- Thoracotomy only if bronchoscopic removal fails.
-
-**Postoperative Care:**\
-- CXR to exclude pneumothorax/residual object.\
-- Inhaled or systemic steroids for wheezing.\
-- Repeat bronchoscopy for incomplete removal or persistent symptoms.
-
-------------------------------------------------------------------------
-
-## Bronchoscopy in TEF / EA
-
--   Identifies fistula location, laryngeal cleft, and tracheomalacia.\
--   Intraoperatively, distal TEF can be occluded with balloon or ETT
-    tip.\
--   Post-repair, methylene blue instilled into trachea confirms
-    recurrent TEF if seen in esophagus.\
--   Evaluate for airway malacia or recurrent fistula when symptoms
-    persist postoperatively.
-
-------------------------------------------------------------------------
-
-## Inhalation Injury and Airway Trauma
-
--   Indications for early bronchoscopy: facial burns, soot, stridor,
-    hoarseness.\
--   Findings: mucosal edema, debris, ulceration.\
--   Manage with 100% oxygen, humidification, bronchodilators, and early
-    airway protection.\
--   Carboxyhemoglobin \>10% indicates CO exposure; treat with O₂.\
--   Cyanide toxicity → administer hydroxocobalamin.
-
-------------------------------------------------------------------------
-
-## Dynamic Airway Lesions
-
-  ----------------------------------------------------------------------------
-  **Condition**       **Bronchoscopic Finding**        **Management**
-  ------------------- -------------------------------- -----------------------
-  Tracheomalacia      \>50% collapse with expiration   Observation → CPAP →
-                                                       Aortopexy/Tracheopexy
-
-  Bronchomalacia      Segmental collapse distal to     Same as above
-                      main bronchi                     
-
-  Stenosis            Fixed narrowing                  Balloon dilation,
-                                                       laser, or segmental
-                                                       resection
-  ----------------------------------------------------------------------------
-
-------------------------------------------------------------------------
-
-## Complications
-
-  ------------------------------------------------------------------------
-  **Complication**           **Mechanism**         **Management**
-  -------------------------- --------------------- -----------------------
-  Hypoxia / hypercarbia      Prolonged apnea       Remove scope, ventilate
-
-  Laryngospasm /             Airway irritation     Deepen anesthesia,
-  bronchospasm                                     bronchodilators
-
-  Bleeding                   Trauma                Topical epi, tamponade,
-                                                   APC
-
-  Pneumothorax               Perforation           Chest tube
-
-  Airway perforation         Instrument trauma     Surgical repair
-
-  Stridor / edema            Mucosal injury        Racemic epi, steroids
-
-  Dental injury              Instrumentation       Bite guard
-  ------------------------------------------------------------------------
-
-> Cricothyrotomy contraindicated \<8 years; if needed, use transtracheal
-> angiocatheter.
-
-------------------------------------------------------------------------
-
-## Postoperative Care
-
--   Post-bronchoscopy CXR for pneumothorax or retained foreign body.\
--   Observe for airway edema, bronchospasm.\
--   ICU monitoring for prolonged procedures or airway instability.\
--   Repeat bronchoscopy for residual debris, granulation, or incomplete
-    retrieval.
-
-------------------------------------------------------------------------
-
-## Key Oral Board Points
-
-1.  **Rigid** bronchoscopy is the gold standard for pediatric foreign
-    body removal.\
-2.  **Inspect distal first** to avoid dropping debris proximally.\
-3.  **Normal CXR ≠ normal airway.**\
-4.  **Minimize positive pressure** until object removed.\
-5.  **Reinspect both bronchi** after retrieval.\
-6.  **Treat postoperative wheeze** with steroids; repeat bronchoscopy if
-    persistent.\
-7.  **Cricothyrotomy contraindicated \<8 yrs** --- use angiocatheter if
-    emergency airway required.\
-8.  **Thoracotomy** reserved for failed bronchoscopic retrieval.
-
-------------------------------------------------------------------------
-
-## References
-
--   APSA Pediatric Surgery NaT --- *Bronchoscopy*, *Airway Foreign
-    Bodies*\
--   Ashcraft's Pediatric Surgery, 7th ed. --- *Foreign Bodies*\
--   Operative Pediatric Surgery, 8th ed. --- *Airway Endoscopy*\
--   Cummings Otolaryngology --- *Tracheobronchial Endoscopy*\
--   UpToDate --- *Airway foreign bodies in children*
-
-------------------------------------------------------------------------
+**Primary sources:** Pediatric Surgery NaT chapters “Bronchoscopy” and “Airway Foreign Bodies”【20†Bronchoscopy†L1-L30】【19†Airway Foreign Bodies†L80-L150】.
