@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # psite_core.py
 # ---------------------------------------------------------------------
 # Core utilities for PSITE Mastery app:
@@ -14,10 +15,12 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+__version__ = "2025.11.03a"
+
 # ============================== OPTIONAL COOKIE MANAGER ==============================
 COOKIE_AVAILABLE = True
 try:
-    from streamlit_cookies_manager import EncryptedCookieManager
+    from streamlit_cookies_manager import EncryptedCookieManager  # optional
 except Exception:
     COOKIE_AVAILABLE = False
 
@@ -34,21 +37,16 @@ THEME_CSS     = os.path.join(BASE_DIR, "theme.css")
 for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR]:
     os.makedirs(p, exist_ok=True)
 
-# Ensure per-topic dirs exist automatically (safe if already there)
-CREATE_TOPIC_DIRS = True
+CREATE_TOPIC_DIRS = True  # ensure subfolders for known topics
 
 # ============================== THEME ==============================
 def apply_base_theme():
-    # Optional external theme file
     if os.path.exists(THEME_CSS):
         with open(THEME_CSS, "r", encoding="utf-8") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-    # App shell CSS: fixed header, spacing, neutral palette, clean cards
     st.markdown("""
     <style>
       :root { --header-h: 64px; --accent:#1d4ed8; --border:#eef0f3; }
-      /* Sidebar adaptive width; main content shouldn’t be clipped when toggling */
       [data-testid="stSidebar"] { min-width: 300px !important; width: 300px !important; }
       [data-testid="stSidebarNav"] { display:none !important; }
 
@@ -79,7 +77,7 @@ def apply_base_theme():
       .verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
       .verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
 
-      /* Ensure brand is never covered by sidebar toggle */
+      /* Make sure header doesn't get occluded when sidebar collapses */
       [data-testid="stSidebar"] ~ section.main .app-header {left:0;right:0;}
     </style>
     """, unsafe_allow_html=True)
@@ -148,7 +146,6 @@ def _cookies():
         if not cm.ready():
             st.stop()
         return cm
-    # Fallback shim using session_state
     class _Shim:
         def __getitem__(self, k): return st.session_state.get(f"_cookie_{k}", "")
         def __setitem__(self, k, v): st.session_state[f"_cookie_{k}"] = v
@@ -157,6 +154,7 @@ def _cookies():
     return _Shim()
 
 def _get_query_params() -> dict:
+    # Streamlit ≥1.31 has st.query_params; older uses experimental_*
     try:
         return dict(st.query_params)
     except Exception:
@@ -228,11 +226,9 @@ def clear_persisted_login():
     components.html("""
     <script>
       try { localStorage.removeItem('psite_token'); } catch(e) {}
-      try {
-        const url = new URL(window.location);
-        url.searchParams.delete('t');
-        window.history.replaceState(null, '', url.toString());
-      } catch(e){}
+      try { const url = new URL(window.location);
+            url.searchParams.delete('t');
+            window.history.replaceState(null, '', url.toString()); } catch(e){}
     </script>
     """, height=0)
 
@@ -240,7 +236,6 @@ def try_auto_login_persisted():
     if st.session_state.get("auth_user"):
         return
     _js_restore_token_if_missing()
-    # Cookie first
     try:
         cm = _cookies(); token = cm.get("auth")
         user = verify_auth_token(token) if token else None
@@ -249,7 +244,6 @@ def try_auto_login_persisted():
             return
     except Exception:
         pass
-    # Then URL param
     token = _get_query_params().get("t")
     user = verify_auth_token(token) if token else None
     if user:
@@ -321,8 +315,7 @@ def auth_login_form():
 
 def auth_logout_button():
     if st.button("Logout", type="secondary", use_container_width=True):
-        clear_persisted_login()
-        st.rerun()
+        clear_persisted_login(); st.rerun()
 
 # ============================== SCORE TOPICS ==============================
 CATEGORY_TO_TOPICS = {
@@ -393,11 +386,8 @@ CATEGORY_TO_TOPICS = {
 }
 ALL_TOPICS: List[str] = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
 
-def get_topics() -> List[str]:
-    return ALL_TOPICS
-
-def get_category_map() -> dict:
-    return CATEGORY_TO_TOPICS
+def get_topics() -> List[str]: return ALL_TOPICS
+def get_category_map() -> dict: return CATEGORY_TO_TOPICS
 
 # ============================== SLUG HELPERS ==============================
 def slugify(s: str) -> str:
@@ -406,18 +396,13 @@ def slugify(s: str) -> str:
 TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
 SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
 
-def topic_to_slug(topic: str) -> str:
-    return TOPIC_TO_SLUG.get(topic, slugify(topic))
-
-def slug_to_topic(slug: str) -> Optional[str]:
-    return SLUG_TO_TOPIC.get(slug)
+def topic_to_slug(topic: str) -> str: return TOPIC_TO_SLUG.get(topic, slugify(topic))
+def slug_to_topic(slug: str) -> Optional[str]: return SLUG_TO_TOPIC.get(slug)
 
 def ensure_topic_dirs():
-    if not CREATE_TOPIC_DIRS:
-        return
+    if not CREATE_TOPIC_DIRS: return
     for t, slug in TOPIC_TO_SLUG.items():
         os.makedirs(os.path.join(QUESTIONS_DIR, slug), exist_ok=True)
-
 ensure_topic_dirs()
 
 # ============================== QUESTIONS / REVIEWS ==============================
@@ -427,8 +412,7 @@ REQUIRED_COLS  = ["id","subject","stem","A","B","C","D","E","correct","explanati
 
 def parse_front_matter(text: str) -> Tuple[Dict, str]:
     m = FRONTMATTER_RE.match(text)
-    if not m:
-        raise ValueError("Missing front-matter '--- ... ---'")
+    if not m: raise ValueError("Missing front-matter '--- ... ---'")
     fm, body = m.group(1), m.group(2)
     meta: Dict[str, str] = {}
     for line in fm.splitlines():
@@ -446,12 +430,6 @@ def _infer_subject_from_path(path: str) -> Optional[str]:
     return SLUG_TO_TOPIC.get(parent)
 
 def normalize_subject(meta_subject: str, path: str) -> Optional[str]:
-    """
-    Normalize any incoming subject to a canonical topic:
-      1) exact match (string equals a known topic)
-      2) slugified match against known slugs
-      3) parent folder slug match
-    """
     topics = set(get_topics())
     if meta_subject and meta_subject in topics:
         return meta_subject
@@ -462,10 +440,6 @@ def normalize_subject(meta_subject: str, path: str) -> Optional[str]:
     return _infer_subject_from_path(path)
 
 def load_questions_frame() -> pd.DataFrame:
-    """
-    Recursively load all *.md files from data/questions/**.
-    Accepts per-topic subfolders. Subject is normalized to canonical topic.
-    """
     files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True))
     rows = []
     for f in files:
@@ -473,8 +447,7 @@ def load_questions_frame() -> pd.DataFrame:
             with open(f, "r", encoding="utf-8") as h:
                 raw = h.read()
             m = FRONTMATTER_RE.match(raw)
-            if not m:
-                continue
+            if not m: continue
             fm, body = m.group(1), m.group(2)
             meta: Dict[str, str] = {}
             for ln in fm.splitlines():
@@ -482,10 +455,8 @@ def load_questions_frame() -> pd.DataFrame:
                     k, v = ln.split(":", 1)
                     meta[k.strip()] = v.strip()
 
-            # Normalize subject
-            meta_subject = (meta.get("subject", "") or "").strip()
-            subject = normalize_subject(meta_subject, f)
-            if not subject:
+            subject = normalize_subject((meta.get("subject","") or "").strip(), f)
+            if not subject:  # skip if still unknown
                 continue
 
             stem, explanation = split_stem_explanation(body)
@@ -510,59 +481,48 @@ def load_questions_frame() -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     for c in REQUIRED_COLS:
-        if c not in df.columns:
-            df[c] = ""
+        if c not in df.columns: df[c] = ""
         df[c] = df[c].astype(str).str.strip()
     df["correct"] = df["correct"].str.upper()
 
-    # Only keep normalized known topics
     df = df[df["subject"].isin(get_topics())].copy()
     return df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
 
 def load_questions_for_subjects(subjects: List[str]) -> pd.DataFrame:
-    if not subjects:
-        return load_questions_frame()
+    if not subjects: return load_questions_frame()
     df = load_questions_frame()
-    if df.empty:
-        return df
+    if df.empty: return df
     return df[df["subject"].isin(subjects)].reset_index(drop=True)
 
 def resolve_review_path(topic: str) -> Optional[str]:
     slug = TOPIC_TO_SLUG.get(topic, slugify(topic))
     exact = os.path.join(REVIEWS_DIR, f"{slug}.md")
-    if os.path.exists(exact):
-        return exact
-    # tolerate plain topic name or any file starting with slug
-    alt_plain = os.path.join(REVIEWS_DIR, f"{topic}.md")
-    if os.path.exists(alt_plain):
-        return alt_plain
+    if os.path.exists(exact): return exact
+    alt = os.path.join(REVIEWS_DIR, f"{topic}.md")
+    if os.path.exists(alt): return alt
     for p in sorted(glob.glob(os.path.join(REVIEWS_DIR, "*.md"))):
         base = os.path.splitext(os.path.basename(p))[0].lower()
-        if base.startswith(slug):
-            return p
+        if base.startswith(slug): return p
     return None
 
 def get_review_word_count(topic: str) -> int:
     p = resolve_review_path(topic)
-    if not p:
-        return 0
+    if not p: return 0
     try:
         with open(p, "r", encoding="utf-8") as f:
             txt = f.read()
-        # Remove code fences/HTML tags and count words
-        clean = re.sub(r"```[\\s\\S]*?```", " ", txt)
-        clean = re.sub(r"<[^>]+>", " ", clean)
-        words = re.findall(r"[A-Za-z0-9’']+", clean)
+        # strip code fences and HTML tags before counting
+        txt = re.sub(r"```[\s\S]*?```", " ", txt)
+        txt = re.sub(r"<[^>]+>", " ", txt)
+        words = re.findall(r"[A-Za-z0-9’']+", txt)
         return len(words)
     except Exception:
         return 0
 
 def questions_count_by_topic() -> Dict[str, int]:
     df = load_questions_frame()
-    if df.empty:
-        return {t:0 for t in get_topics()}
+    if df.empty: return {t:0 for t in get_topics()}
     counts = df.groupby("subject")["id"].nunique().to_dict()
-    # Ensure all topics present in dict
     for t in get_topics():
         counts.setdefault(t, 0)
     return counts
@@ -570,8 +530,7 @@ def questions_count_by_topic() -> Dict[str, int]:
 # ============================== USER STATE / ANALYTICS ==============================
 def _user_file(pathkey: str) -> str:
     u = st.session_state.get("auth_user")
-    if not u:
-        raise RuntimeError("Not authenticated.")
+    if not u: raise RuntimeError("Not authenticated.")
     base = auth_user_dir(u)
     paths = {
         "progress": os.path.join(base, "progress.json"),
@@ -585,33 +544,24 @@ def load_progress() -> Dict[str, Dict]:
     data = _read_json(_user_file("progress"), {})
     for t in topics:
         data.setdefault(t, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
-    # prune unknown keys
     for k in list(data.keys()):
-        if k not in topics:
-            data.pop(k, None)
+        if k not in topics: data.pop(k, None)
     return data
 
-def save_progress(d: Dict[str, Dict]):
-    _write_json(_user_file("progress"), d)
-
-def load_history() -> List[Dict]:
-    return _read_json(_user_file("history"), [])
-
-def save_history(arr: List[Dict]):
-    _write_json(_user_file("history"), arr)
+def save_progress(d: Dict[str, Dict]): _write_json(_user_file("progress"), d)
+def load_history() -> List[Dict]: return _read_json(_user_file("history"), [])
+def save_history(arr: List[Dict]): _write_json(_user_file("history"), arr)
 
 def record_attempt(topic: str, qid: str, correct: bool):
     hist = load_history()
     hist.append({"ts": int(time.time()), "topic": topic, "id": qid, "correct": bool(correct)})
     save_history(hist)
-
     prog = load_progress()
     rec = prog.setdefault(topic, {"completed": False, "correct": 0, "total": 0, "last_seen": None, "mastered": False})
     rec["total"] += 1
-    if correct:
-        rec["correct"] += 1
+    if correct: rec["correct"] += 1
     rec["last_seen"] = int(time.time())
-    if rec["total"] >= 5 and rec["correct"]/max(1, rec["total"]) >= 0.8:
+    if rec["total"] >= 5 and rec["correct"]/max(1,rec["total"]) >= 0.8:
         rec["mastered"] = True
     save_progress(prog)
 
@@ -623,8 +573,7 @@ def overall_accuracy() -> float:
 
 def accuracy_timeseries(days: int = 30) -> List[Tuple[str,float,int]]:
     hist = load_history()
-    if not hist:
-        return []
+    if not hist: return []
     today = dt.date.today()
     by_day = {}
     for i in range(days-1, -1, -1):
@@ -657,13 +606,10 @@ def topic_strengths(k:int=5) -> Tuple[List[Tuple[str,float,int]], List[Tuple[str
 # ============================== SPACED REPETITION (SM-2 lite) ==============================
 def _now_day_ts() -> int:
     today = dt.date.today()
-    return int(time.mktime(dt.datetime(today.year, today.month, today.day).timetuple()))
+    return int(time.mktime(dt.datetime(today.year,today.month,today.day).timetuple()))
 
-def load_sr() -> Dict[str, Dict]:
-    return _read_json(_user_file("sr"), {})
-
-def save_sr(srobj: Dict[str, Dict]):
-    _write_json(_user_file("sr"), srobj)
+def load_sr() -> Dict[str, Dict]: return _read_json(_user_file("sr"), {})
+def save_sr(srobj: Dict[str, Dict]): _write_json(_user_file("sr"), srobj)
 
 def _init_sr_if_needed(qid: str):
     sr = load_sr()
@@ -673,13 +619,11 @@ def _init_sr_if_needed(qid: str):
 
 def sr_due_ids(limit:int=20, subjects: Optional[List[str]]=None) -> List[str]:
     df = load_questions_for_subjects(subjects or [])
-    if df.empty:
-        return []
+    if df.empty: return []
     sr = load_sr(); today = _now_day_ts(); ids=[]
     for _, r in df.iterrows():
         qid = r["id"]; d = sr.get(qid); due_ts = d["due_ts"] if d else today
-        if due_ts <= today:
-            ids.append(qid)
+        if due_ts <= today: ids.append(qid)
     if not ids:
         upcoming = sorted(((q, sr.get(q, {"due_ts":today})["due_ts"]) for q in df["id"].tolist()), key=lambda x:x[1])
         ids = [q for q,_ in upcoming[:limit]]
@@ -688,7 +632,7 @@ def sr_due_ids(limit:int=20, subjects: Optional[List[str]]=None) -> List[str]:
 def sr_update(qid:str, was_correct:bool):
     _init_sr_if_needed(qid)
     sr = load_sr(); rec = sr[qid]
-    quality = 4 if was_correct else 2  # correct feels like 4/5, incorrect ~2
+    quality = 4 if was_correct else 2
     ease = rec.get("ease",2.5); reps = rec.get("reps",0); interval = rec.get("interval",0.0)
     if was_correct:
         if reps==0: interval=1
