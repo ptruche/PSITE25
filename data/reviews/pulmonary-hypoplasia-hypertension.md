@@ -2,22 +2,6 @@
 
 ---
 
-## <span style="color:#4B0082;">Learning Objectives Map</span>
-
-This review is organized to explicitly address each objective:
-
-1) **Epidemiology** — incidence figures; prenatal/postnatal risk factors; hypoplasia incidence and high-risk populations  
-2) **Presentation** — clinical findings for PHTN and hypoplasia  
-3) **Diagnosis** — ABG/OI/A-a criteria, CXR, echocardiography; hypoplasia diagnostic hallmarks  
-4) **Pertinent Physiology** — fetal/transitional circulation; mechanisms raising PVR; **normal fetal lung development stages**  
-5) **Staging/Grading** — quantitative/qualitative PHTN grading; fetal imaging severity for hypoplasia (o/e LHR & TFLV) and survival linkage  
-6) **Nonsurgical Treatment** — supportive bundle; pulmonary endothelial-targeted pharmacology; ventilatory strategy at FRC  
-7) **Indications/Contraindications for ECLS** — context-specific (PPHN, MAS, sepsis, CDH)  
-8) **Assessment of Outcomes** — determinants of neonatal PHTN outcomes; contemporary CDH survival  
-9) **Long-Term Follow-Up** — neurodevelopment risk (PPHN); multidisciplinary CDH survivor care
-
----
-
 ## <span style="color:#006400;">1) Epidemiology</span>
 
 ### Pulmonary Hypertension (PHTN)
