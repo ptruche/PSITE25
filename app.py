@@ -17,6 +17,31 @@ from psite_core import (
 st.set_page_config(page_title="PSITE Mastery", page_icon=None,
                    layout="wide", initial_sidebar_state="expanded")
 apply_base_theme()
+
+st.markdown("""
+<style>
+/* Hard reset top spacing across Streamlit containers */
+html, body { margin:0 !important; padding:0 !important; }
+[data-testid="stAppViewContainer"] { padding-top:0 !important; }
+main.block-container { padding-top:0 !important; margin-top:0 !important; }
+main .block-container > div:first-child { margin-top:0 !important; }
+
+/* Hide the default header/toolbar gaps completely */
+header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; padding:0 !important; margin:0 !important; opacity:0 !important; }
+div[data-testid="stToolbar"] { display:none !important; }
+
+/* Ensure our rail wrapper really starts at the top */
+.edge-rail-wrap { position: sticky; top: 0; height: 100vh; }
+
+/* Make the whole main area start flush at top and be the scroller */
+.main-scroll { height: 100vh; overflow: auto; padding-top: 0 !important; margin-top: 0 !important; }
+
+/* (Optional) Remove any mysterious extra spacers some themes add */
+.block-container div:empty { display: none !important; }
+</style>
+""", unsafe_allow_html=True)
+
+
 ensure_session_keys()
 try_auto_login_persisted()
 
