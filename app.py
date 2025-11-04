@@ -7,7 +7,7 @@ from psite_core import (
     get_category_map, get_topics, resolve_review_path,
     load_questions_frame, questions_count_by_topic, record_attempt,
     overall_accuracy, sr_due_ids, sr_update, load_progress,
-    topic_to_slug, get_review_word_count,
+    topic_to_slug, get_review_word_count, ORDERED_TOPICS
 )
 
 # ------------------------------------------------------------------ #
@@ -30,38 +30,38 @@ st.markdown(
     """
 <style>
 /* ---------- ROOT ---------- */
-:root {--accent:#1d4ed8; --border:#e5e7eb; --bg:#ffffff; --text:#111111; --sidebar-bg:linear-gradient(to bottom, #f9fafb, #e5e7eb); --shadow:0 1px 3px rgba(0,0,0,0.05); --text-muted:#6b7280;}
+:root {--accent:#1d4ed8; --border:#e5e7eb; --bg:#ffffff; --text:#111111; --sidebar-bg:#f9fafb; --shadow:0 1px 3px rgba(0,0,0,0.05);}
 @media (prefers-color-scheme: dark) {
-  :root {--accent:#3b82f6; --border:#374151; --bg:#111827; --text:#f9fafb; --sidebar-bg:linear-gradient(to bottom, #1f2937, #111827); --shadow:0 1px 3px rgba(0,0,0,0.2); --text-muted:#9ca3af;}
+  :root {--accent:#3b82f6; --border:#374151; --bg:#111827; --text:#f9fafb; --sidebar-bg:#1f2937; --shadow:0 1px 3px rgba(0,0,0,0.2);}
 }
 html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(--text);}
 .css-1d391kg {background:var(--bg);}
 
 /* ---------- Layout ---------- */
-[data-testid="stSidebar"] {background:var(--sidebar-bg); top:56px !important; height:calc(100vh - 56px) !important; box-shadow:var(--shadow); border-right:1px solid var(--border);}
-[data-testid="collapsedControl"] {top:56px !important; height:56px !important; justify-content:center; align-items:center; color:var(--text-muted); font-size:1.2rem;}
+[data-testid="stSidebar"] {background:var(--sidebar-bg); top:56px !important; height:calc(100vh - 56px) !important; box-shadow:var(--shadow);}
+[data-testid="collapsedControl"] {top:56px !important; height:56px !important; justify-content:center; align-items:center; color:var(--text); font-size:1.2rem;}
 [data-testid="collapsedControl"]:hover {color:var(--accent);}
-[data-testid="stSidebarCollapseButton"] {justify-content:flex-end; height:56px !important; align-items:center; display:flex; width:100%; color:var(--text-muted); font-size:1.2rem; padding-right:1rem;}
+[data-testid="stSidebarCollapseButton"] {justify-content:flex-end; height:56px !important; align-items:center; display:flex; width:100%; color:var(--text); font-size:1.2rem; padding-right:1rem;}
 [data-testid="stSidebarCollapseButton"]:hover {color:var(--accent);}
-[data-testid="stSidebarUserContent"] {padding:1.5rem 1.25rem;}
-.sidebar-sep {height:1px; background:var(--border); margin:1.5rem 0;}
-.stButton>button {width:100%; border-radius:6px; padding:.55rem 1rem; margin-bottom:.75rem; background:transparent; border:1px solid var(--border); transition:all 0.2s ease; font-weight:500; color:var(--text); box-shadow:var(--shadow);}
-.stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent); box-shadow:0 4px 12px rgba(0,0,0,0.1); transform:translateY(-1px);}
+[data-testid="stSidebarUserContent"] {padding:1.25rem 1rem;}
+.sidebar-sep {height:1px; background:var(--border); margin:1.25rem 0;}
+.stButton>button {width:100%; border-radius:8px; padding:.6rem 1rem; margin-bottom:.6rem; background:var(--bg); border:1px solid var(--border); transition:all 0.15s ease-in-out; font-weight:500; box-shadow:var(--shadow);}
+.stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent); box-shadow:0 2px 6px rgba(0,0,0,0.1);}
 
 /* ---------- Header (fixed) ---------- */
 .app-header {position:fixed; top:0; left:0; right:0; height:56px; background:var(--bg);
-  border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 1.5rem;
+  border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 1rem;
   z-index:10000; justify-content:space-between; font-weight:600; box-shadow:var(--shadow);}
 .app-header .logo {font-size:1.2rem; font-weight:900;}
 .app-header .logo span {color:var(--accent);}
 
 /* ---------- Main area ---------- */
-.main {margin-top:56px; padding:1.5rem;}
+.main {margin-top:56px; padding:1rem;}
 .block-container {padding-top:0 !important;}
 
 /* ---------- KPI donuts ---------- */
 .kpi-card {border:1px solid var(--border); border-radius:16px; background:var(--bg);
-  padding:1.25rem; display:flex; align-items:center; gap:1.25rem; box-shadow:var(--shadow);}
+  padding:1rem; display:flex; align-items:center; gap:1rem; box-shadow:var(--shadow);}
 .kpi-ring {width:80px; height:80px; border-radius:50%;
   background:conic-gradient(var(--accent) calc(var(--val)*1%), #e5e7eb 0);
   display:grid; place-items:center;}
@@ -70,17 +70,17 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 
 /* ---------- Topic cards ---------- */
 .topic-card {border:1px solid var(--border); border-radius:12px; background:var(--bg);
-  padding:1rem; box-shadow:var(--shadow);}
-.topic-title {font-weight:600; font-size:1rem; margin-bottom:.35rem;}
+  padding:.75rem; box-shadow:var(--shadow);}
+.topic-title {font-weight:600; font-size:1rem; margin-bottom:.25rem;}
 .meter {height:8px; background:#e5e7eb; border-radius:999px; overflow:hidden;}
 .meter span {display:block; height:100%; background:var(--accent); width:0%;}
-.badge {display:inline-flex; align-items:center; gap:6px; padding:.25rem .75rem;
-  border:1px solid var(--border); border-radius:999px; font-size:.8rem; background:var(--bg);}
+.badge {display:inline-flex; align-items:center; gap:4px; padding:2px 8px;
+  border:1px solid var(--border); border-radius:999px; font-size:.75rem; background:var(--bg);}
 
 /* ---------- Quiz UI ---------- */
 .q-prompt {border:1px solid var(--border); background:#f9fafb; border-radius:10px;
-  padding:1.25rem; margin-bottom:1rem; font-size:1rem;}
-.verdict {font-weight:600; padding:.25rem .75rem; border-radius:999px; display:inline-flex;}
+  padding:1rem; margin-bottom:.75rem; font-size:1rem;}
+.verdict {font-weight:600; padding:.2rem .6rem; border-radius:999px; display:inline-flex;}
 .verdict-ok {background:#10b9811a; color:#065f46; border:1px solid #34d399;}
 .verdict-err {background:#ef44441a; color:#7f1d1d; border:1px solid #fca5a5;}
 
@@ -204,6 +204,7 @@ nav = {
     "Dashboard": "dashboard",
     "Score Topics": "topics",
     "Make Quiz": "make_quiz",
+    "Learning Path": "learning_path",
 }
 for label, view in nav.items():
     if st.sidebar.button(label, key=f"nav_{view}", use_container_width=True):
@@ -299,90 +300,137 @@ elif view == "topics":
 elif view == "review":
     topic = st.session_state.get("active_topic")
     if not topic:
-        st.info("Select a topic from **Score Topics**.")
+        st.info("Choose a topic from Score Topics.")
     else:
         st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
-        path = resolve_review_path(topic)
-        if not path:
-            st.info("No review file yet – add a `.md` inside `data/reviews/` with the topic slug.")
+        p = resolve_review_path(topic)
+        if not p:
+            st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named with the topic slug.")
         else:
-            with open(path, "r", encoding="utf-8") as f:
-                st.markdown(f.read(), unsafe_allow_html=True)
+            with open(p, "r", encoding="utf-8") as f:
+                txt = f.read()
+            st.markdown(txt, unsafe_allow_html=True)
 
         st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
         if st.button("Quiz this topic ▶", use_container_width=True):
-            pool = load_questions_for_subjects([topic]).reset_index(drop=True)
-            _start_quiz(pool, mode="normal", topic=topic)
+            df = load_questions_for_subjects([topic])
+            st.session_state.quiz_pool = df.reset_index(drop=True)
+            st.session_state.quiz_idx = 0
+            st.session_state.quiz_answers = {}
+            st.session_state.quiz_revealed = set()
+            st.session_state.quiz_finished = False
+            st.session_state.quiz_mode = "normal"
+            st.session_state.view = "quiz"
+            st.rerun()
 
 # ---------- MAKE QUIZ ----------
 elif view == "make_quiz":
     st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
     topics = ["Any"] + get_topics()
-    pick = st.multiselect("Choose topics (leave empty → Any)", topics, default=[])
-    n = st.number_input("Questions", 5, 100, 20, step=5)
+    pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
+    n = st.number_input("Number of questions", 5, 100, 20, step=5)
     if st.button("Start ▶", use_container_width=True):
-        sel = [] if ("Any" in pick or not pick) else pick
-        df = load_questions_for_subjects(sel)
-        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True)
-        _start_quiz(df, mode="normal")
+        if pick and "Any" in pick:
+            pick = []
+        df = load_questions_for_subjects(pick)
+        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
+        st.session_state.quiz_pool = df
+        st.session_state.quiz_idx = 0
+        st.session_state.quiz_answers = {}
+        st.session_state.quiz_revealed = set()
+        st.session_state.quiz_finished = False
+        st.session_state.quiz_mode = "normal"
+        st.session_state.view = "quiz"
+        st.rerun()
+
+# ---------- LEARNING PATH ----------
+elif view == "learning_path":
+    st.markdown("<div class='section-title'>Learning Path</div>", unsafe_allow_html=True)
+    st.caption("Progress through topics in an optimal order. Complete quizzes to unlock green checkmarks.")
+    
+    for i, topic in enumerate(ORDERED_TOPICS):
+        prog = PROGRESS.get(topic, {})
+        attempted = prog.get("total", 0)
+        correct = prog.get("correct", 0)
+        total = Q_COUNT.get(topic, 0)
+        acc = correct / attempted if attempted > 0 else 0
+        pct = _pct(attempted, total)
+        complete = pct >= 80 and acc >= 0.8
+        label = f"✅ {topic}" if complete else f"⬜ {topic}"
+        
+        if st.button(label, key=f"lp_{i}", use_container_width=True):
+            df = load_questions_for_subjects([topic])
+            st.session_state.quiz_pool = df.reset_index(drop=True)
+            st.session_state.quiz_idx = 0
+            st.session_state.quiz_answers = {}
+            st.session_state.quiz_revealed = set()
+            st.session_state.quiz_finished = False
+            st.session_state.quiz_mode = "normal"
+            st.session_state.view = "quiz"
+            st.rerun()
+        
+        if i < len(ORDERED_TOPICS) - 1:
+            st.markdown("<div style='text-align:center; font-size:2rem; color:#9ca3af;'>↓</div>", unsafe_allow_html=True)
 
 # ---------- QUIZ ----------
 elif view == "quiz":
     pool: pd.DataFrame = st.session_state.get("quiz_pool")
     if pool is None or pool.empty:
-        st.info("No questions available for the selected mode.")
+        if st.session_state.get("quiz_mode") == "spaced":
+            st.success("✅ No spaced-repetition items due.")
+        else:
+            st.info("No questions found. Add `.md` files to `data/questions/`.")
     else:
         i = st.session_state.quiz_idx
         row = pool.iloc[i]
         pct = int(((i + 1) / len(pool)) * 100)
-        st.progress(pct / 100)
+        st.progress(pct/100)
         suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
         st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
         st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
-        letters = ["A", "B", "C", "D", "E"]
-        prev = st.session_state.quiz_answers.get(row["id"])
-        default = letters.index(prev) if prev in letters else 0
+        letters = ["A","B","C","D","E"]
+        prev_choice = st.session_state.quiz_answers.get(row["id"])
+        default_idx = letters.index(prev_choice) if prev_choice in letters else 0
         choice = st.radio(
-            "", letters, index=default,
+            "",
+            letters,
+            index=default_idx,
             format_func=lambda L: row[L],
             label_visibility="collapsed",
             key=f"q_{row['id']}"
         )
         st.session_state.quiz_answers[row["id"]] = choice
 
-        c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
+        c1, c2, c3, c4 = st.columns([1,2,2,1])
         with c1:
             if st.button("Reveal", key=f"rev_{i}"):
                 st.session_state.quiz_revealed.add(row["id"])
         with c2:
-            if st.button("Previous", disabled=i == 0):
-                st.session_state.quiz_idx = i - 1
-                st.rerun()
+            if st.button("Previous", disabled=(i==0)):
+                st.session_state.quiz_idx = max(0, i-1); st.rerun()
         with c3:
-            if st.button("Next", disabled=i == len(pool) - 1):
-                st.session_state.quiz_idx = i + 1
-                st.rerun()
+            if st.button("Next", disabled=(i==len(pool)-1)):
+                st.session_state.quiz_idx = min(len(pool)-1, i+1); st.rerun()
         with c4:
             if st.button("Finish"):
                 st.session_state.quiz_finished = True
 
-        # ---- REVEAL ----
         if row["id"] in st.session_state.quiz_revealed:
-            correct = (choice == row["correct"])
-            verdict = "verdict-ok" if correct else "verdict-err"
-            txt = "Correct" if correct else "Incorrect"
-            st.markdown(f"<span class='verdict {verdict}'>{txt}</span>", unsafe_allow_html=True)
-            if row.get("explanation"):
+            is_correct = (choice == row["correct"])
+            verdict_class = "verdict-ok" if is_correct else "verdict-err"
+            verdict_text = "Correct" if is_correct else "Incorrect"
+            st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
+            if str(row.get("explanation","")).strip():
                 st.markdown(row["explanation"], unsafe_allow_html=True)
-            _record_and_update(row, correct)
+            _record_and_update(row, is_correct)
 
-        # ---- FINISH ----
         if st.session_state.quiz_finished:
-            scored = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
-            correct_n = sum(1 for qid in scored if pool.set_index("id").loc[qid, "correct"] == st.session_state.quiz_answers[qid])
-            denom = len(scored) or len(pool)
+            idxed = pool.set_index("id")
+            scored_ids = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
+            correct_n = sum(1 for qid in scored_ids if idxed.loc[qid]["correct"] == st.session_state.quiz_answers[qid])
+            denom = len(scored_ids) if scored_ids else len(pool)
             st.success(f"Score: {correct_n}/{denom}")
 
 st.markdown("</div>", unsafe_allow_html=True)   # .main
