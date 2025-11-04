@@ -30,19 +30,20 @@ st.markdown(
     """
 <style>
 /* ---------- ROOT ---------- */
-:root {--accent:#1d4ed8; --border:#e5e7eb; --bg:#ffffff; --text:#111111;}
+:root {--accent:#1d4ed8; --border:#e5e7eb; --bg:#ffffff; --text:#111111; --sidebar-bg:#f9fafb;}
 @media (prefers-color-scheme: dark) {
-  :root {--accent:#3b82f6; --border:#374151; --bg:#111827; --text:#f9fafb;}
+  :root {--accent:#3b82f6; --border:#374151; --bg:#111827; --text:#f9fafb; --sidebar-bg:#1f2937;}
 }
 html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(--text);}
 .css-1d391kg {background:var(--bg);}
 
 /* ---------- Layout ---------- */
-.edge-rail {padding:0.75rem 0.5rem; background:var(--bg); border-right:1px solid var(--border);}
-.edge-rail-title {font-weight:900; font-size:1.1rem; margin:0 0 .5rem; letter-spacing:.2px;}
+.edge-rail {padding:1rem 0.75rem; background:var(--sidebar-bg); border-right:1px solid var(--border); box-shadow:2px 0 8px rgba(0,0,0,0.05); height:100vh; overflow-y:auto;}
+.edge-rail-title {font-weight:900; font-size:1.1rem; margin:0 0 .75rem; letter-spacing:.2px;}
 .edge-rail-title span {color:var(--accent);}
-.edge-rail .stButton>button {width:100%; border-radius:10px; padding:.45rem .6rem; margin-bottom:.35rem;}
-.edge-rail .sep {height:1px; background:var(--border); margin:.75rem 0;}
+.edge-rail .stButton>button {width:100%; border-radius:8px; padding:.5rem .75rem; margin-bottom:.5rem; background:var(--bg); border:1px solid var(--border); transition:all 0.2s; font-weight:500;}
+.edge-rail .stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent);}
+.edge-rail .sep {height:1px; background:var(--border); margin:1rem 0;}
 .edge-rail .toggle-btn {background:transparent; border:none; padding:0; font-size:1.2rem; cursor:pointer; width:100%; text-align:left; color:var(--text);}
 
 /* ---------- Header (fixed) ---------- */
@@ -216,9 +217,9 @@ with rail:
         st.markdown("<div class='edge-rail-title'>PSITE <span>Mastery</span></div>", unsafe_allow_html=True)
 
         nav = {
-            "Dashboard": "dashboard",
-            "Score Topics": "topics",
-            "Make Quiz": "make_quiz",
+            "🏠 Dashboard": "dashboard",
+            "📚 Score Topics": "topics",
+            "🧩 Make Quiz": "make_quiz",
         }
         for label, view in nav.items():
             if st.button(label, key=f"nav_{view}", use_container_width=True):
@@ -227,7 +228,7 @@ with rail:
 
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
 
-        if st.button("Spaced Repetition ▶", key="nav_sr", use_container_width=True):
+        if st.button("🔄 Spaced Repetition", key="nav_sr", use_container_width=True):
             ids = sr_due_ids(limit=50)
             pool = ALL_Q[ALL_Q["id"].isin(ids)].reset_index(drop=True) if not ALL_Q.empty else ALL_Q
             _start_quiz(pool, mode="spaced")
