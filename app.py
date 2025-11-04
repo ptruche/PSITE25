@@ -12,55 +12,53 @@ from psite_core import (
     topic_to_slug, get_review_word_count,  # readiness badges
 )
 
-# ---------------- App shell / theme ----------------
+# --------------- App shell / theme ---------------
 st.set_page_config(page_title="PSITE Mastery", page_icon=None,
                    layout="wide", initial_sidebar_state="expanded")
 apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# ---------------- Styles (dashboard + topics visuals preserved) ----------------
+# --------------- Styles (keeps your dashboard/topics look) ---------------
 st.markdown("""
 <style>
-/* --- Minimal global chrome --- */
+/* Hide default Streamlit header spacing */
 header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; opacity:0; }
 .block-container{ padding-top:12px !important; }
 
-/* --- Sleek edge rail --- */
+/* ===== Sleek custom edge rail ===== */
 .edge-rail-wrap{ height:100vh; position:sticky; top:0; }
 .edge-rail{
-  background: #f6f8fc;          /* subtle tinted background */
-  border-right: 1px solid #e7ecf3;
-  height: 100%; padding: 10px 10px;
-  border-radius: 0 12px 12px 0;
-  box-shadow: 1px 0 0 rgba(0,0,0,0.02) inset;
+  background:#f6f8fc;
+  border-right:1px solid #e7ecf3;
+  height:100%; padding:12px 12px;
+  border-radius:0 12px 12px 0;
+  box-shadow:1px 0 0 rgba(0,0,0,0.02) inset;
+  display:flex; flex-direction:column; gap:8px;
 }
 .edge-rail.collapsed{
-  padding: 8px 6px;
-  background: #f6f8fc;
+  padding:8px 8px;
+  align-items:center; justify-content:center;
 }
 
-/* Toggle buttons */
-.rail-toggle-open, .rail-toggle-closed{
-  width: 36px; height: 36px; border-radius: 999px;
-  background: #ffffff; border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-  display: grid; place-items: center; cursor: pointer;
+/* Chevron buttons (visible, no empty labels) */
+.rail-btn{
+  width:40px; height:40px; border-radius:999px;
+  background:#fff; border:1px solid #e5e7eb;
+  box-shadow:0 1px 2px rgba(0,0,0,0.03);
+  display:grid; place-items:center;
+  font-size:18px; line-height:1; cursor:pointer;
 }
-.rail-toggle-open:hover, .rail-toggle-closed:hover{
-  border-color:#dbe2ea;
-}
-
-/* Remove default button chrome */
-.edge-rail .stButton>button{
-  background:transparent; border:none; padding:0; height:auto; width:auto;
-}
+.rail-btn:hover{ border-color:#dbe2ea; }
 
 /* Rail content */
-.edge-rail-title{font-weight:900;font-size:1.05rem;margin:.1rem 0 .6rem 0; letter-spacing:.2px;}
-.edge-rail-sub{color:#6b7280; font-size:.82rem; margin:-.3rem 0 .5rem 0;}
-.edge-rail .nav-btn{width:100%; border-radius:10px; padding:.48rem .65rem; border:1px solid #e5e7eb; background:#fff; margin-bottom:.45rem;}
-.edge-rail .sep{height:1px; background:#e9edf5; margin:.55rem 0;}
+.edge-rail-title{font-weight:900;font-size:1.05rem;letter-spacing:.2px;margin:.25rem 0 .2rem 0;}
+.edge-rail-sub{color:#6b7280;font-size:.82rem;margin:.1rem 0 .4rem 0;}
+.edge-rail .nav-btn{
+  width:100%; border-radius:10px; padding:.48rem .65rem;
+  border:1px solid #e5e7eb; background:#fff; margin-bottom:.45rem;
+}
+.edge-rail .sep{height:1px;background:#e9edf5;margin:.55rem 0;}
 
 /* Dashboard donuts */
 .kpi-wrap{display:flex;gap:24px;flex-wrap:wrap;}
@@ -86,32 +84,32 @@ header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; o
 .topic-title{font-weight:600;font-size:.98rem;line-height:1.2;margin-bottom:.25rem;}
 .topic-row{display:flex;align-items:center;gap:.6rem;margin:.25rem 0 .35rem 0;}
 .topic-meta{font-size:.78rem;color:#6b7280}
-.q-prompt { border:1px solid var(--border,#eef0f3); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
-.verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
-.verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
-.verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
+.q-prompt{border:1px solid var(--border,#eef0f3);background:#fafbfc;border-radius:10px;padding:12px;margin-bottom:6px;}
+.verdict{font-weight:600;padding:.22rem .6rem;border-radius:999px;border:1px solid transparent;display:inline-flex;align-items:center;}
+.verdict-ok{background:#10b9811a;color:#065f46;border-color:#34d399;}
+.verdict-err{background:#ef44441a;color:#7f1d1d;border-color:#fca5a5;}
 
-/* Section utilities */
+/* Sections */
 .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
 .divider{height:1px;background:#eef0f3;margin:1rem 0;}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- Auth Gate ----------------
+# --------------- Auth gate ---------------
 if not auth_is_authed():
     st.markdown("#### Welcome")
     st.caption("Sign in to access your dashboard, topics, and quizzes.")
     auth_login_form()
     st.stop()
 
-# ---------------- Rail state ----------------
+# --------------- Rail state ---------------
 if "rail_open" not in st.session_state:
     st.session_state.rail_open = True  # expanded by default
 
 def _toggle_rail():
     st.session_state.rail_open = not st.session_state.rail_open
 
-# ---------------- Utilities (unchanged logic) ----------------
+# --------------- Utilities (unchanged logic) ---------------
 def _safe_pct(numer: int, denom: int) -> int:
     return int(round(100 * numer / denom)) if denom else 0
 
@@ -173,7 +171,7 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
-# ---------------- Views (your preferred visuals retained) ----------------
+# --------------- Views (your preferred visuals) ---------------
 def view_dashboard():
     q_count = questions_count_by_topic()
     prog = load_progress()
@@ -342,7 +340,7 @@ def view_quiz():
         denom = len(scored_ids) if scored_ids else len(pool)
         st.success(f"Score: {correct_n}/{denom}")
 
-# ---------------- Router ----------------
+# --------------- Router ---------------
 def render_main():
     view = st.session_state.get("view", "dashboard")
     if view == "topics":
@@ -356,26 +354,32 @@ def render_main():
     else:
         view_dashboard()
 
-# ---------------- Layout with SLEEK EDGE RAIL ----------------
-# Collapsed rail is a very slim strip with just a chevron.
-rail_w, main_w = (0.20, 0.80) if st.session_state.rail_open else (0.035, 0.965)
+# --------------- Layout: robust rail with safe collapsed width ---------------
+# Use a visible minimum width when collapsed so the chevron never disappears.
+rail_w_expanded = 0.18
+rail_w_collapsed = 0.06   # was too thin before; 0.06 keeps a safe clickable strip
+rail_w = rail_w_expanded if st.session_state.rail_open else rail_w_collapsed
+main_w = 1.0 - rail_w
+
 rail_col, main_col = st.columns([rail_w, main_w], gap="small")
 
 with rail_col:
     st.markdown("<div class='edge-rail-wrap'>", unsafe_allow_html=True)
-    if st.session_state.rail_open:
-        st.markdown("<div class='edge-rail'>", unsafe_allow_html=True)
+    collapsed = not st.session_state.rail_open
+    rail_cls = "edge-rail collapsed" if collapsed else "edge-rail"
+    st.markdown(f"<div class='{rail_cls}'>", unsafe_allow_html=True)
 
-        # Top-left round toggle (chevron)
-        if st.button("",
-                     key="toggle_open",
-                     help="Collapse",
-                     use_container_width=False):
+    if collapsed:
+        # Show a single chevron-button (“▶”) centered; very obvious.
+        if st.button("▶", key="toggle_closed", help="Expand", use_container_width=False):
             _toggle_rail(); st.rerun()
-        st.markdown('<div class="rail-toggle-open">⟨</div>', unsafe_allow_html=True)
+    else:
+        # Top-left collapse chevron (“◀”)
+        if st.button("◀", key="toggle_open", help="Collapse", use_container_width=False):
+            _toggle_rail(); st.rerun()
 
         # Brand + navigation
-        st.markdown("<div class='edge-rail-title' style='margin-top:.6rem;'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
+        st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
         st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
 
         if st.button("Dashboard", key="nav_dash", use_container_width=True):
@@ -402,15 +406,7 @@ with rail_col:
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
         auth_logout_button()
 
-        st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail
-    else:
-        # Collapsed: slim rail with only a circular chevron centered vertically
-        st.markdown("<div class='edge-rail collapsed' style='display:flex;align-items:center;justify-content:center;'>", unsafe_allow_html=True)
-        if st.button("", key="toggle_closed", help="Expand", use_container_width=False):
-            _toggle_rail(); st.rerun()
-        st.markdown('<div class="rail-toggle-closed">⟩</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
+    st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail
     st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail-wrap
 
 with main_col:
