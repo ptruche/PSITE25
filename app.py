@@ -215,7 +215,9 @@ if st.sidebar.button("Spaced Repetition", key="nav_sr", use_container_width=True
     _start_quiz(pool, mode="spaced")
 
 st.sidebar.markdown("<div class='sidebar-sep'></div>", unsafe_allow_html=True)
-auth_logout_button()
+if st.sidebar.button("Logout", type="secondary", use_container_width=True):
+    clear_persisted_login()
+    st.rerun()
 
 # ---------- MAIN ----------
 st.markdown("<div class='main'>", unsafe_allow_html=True)
@@ -363,21 +365,21 @@ elif view == "quiz":
             if st.button("Finish"):
                 st.session_state.quiz_finished = True
 
-            # ---- REVEAL ----
-            if row["id"] in st.session_state.quiz_revealed:
-                correct = (choice == row["correct"])
-                verdict = "verdict-ok" if correct else "verdict-err"
-                txt = "Correct" if correct else "Incorrect"
-                st.markdown(f"<span class='verdict {verdict}'>{txt}</span>", unsafe_allow_html=True)
-                if row.get("explanation"):
-                    st.markdown(row["explanation"], unsafe_allow_html=True)
-                _record_and_update(row, correct)
+        # ---- REVEAL ----
+        if row["id"] in st.session_state.quiz_revealed:
+            correct = (choice == row["correct"])
+            verdict = "verdict-ok" if correct else "verdict-err"
+            txt = "Correct" if correct else "Incorrect"
+            st.markdown(f"<span class='verdict {verdict}'>{txt}</span>", unsafe_allow_html=True)
+            if row.get("explanation"):
+                st.markdown(row["explanation"], unsafe_allow_html=True)
+            _record_and_update(row, correct)
 
-            # ---- FINISH ----
-            if st.session_state.quiz_finished:
-                scored = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
-                correct_n = sum(1 for qid in scored if pool.set_index("id").loc[qid, "correct"] == st.session_state.quiz_answers[qid])
-                denom = len(scored) or len(pool)
-                st.success(f"Score: {correct_n}/{denom}")
+        # ---- FINISH ----
+        if st.session_state.quiz_finished:
+            scored = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
+            correct_n = sum(1 for qid in scored if pool.set_index("id").loc[qid, "correct"] == st.session_state.quiz_answers[qid])
+            denom = len(scored) or len(pool)
+            st.success(f"Score: {correct_n}/{denom}")
 
 st.markdown("</div>", unsafe_allow_html=True)   # .main
