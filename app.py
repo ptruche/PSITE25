@@ -1,6 +1,7 @@
 # app.py
 import streamlit as st
 import pandas as pd
+import streamlit.components.v1 as components
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
