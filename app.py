@@ -17,9 +17,10 @@ st.set_page_config(page_title="PSITE Mastery", page_icon=None,
                    layout="wide", initial_sidebar_state="expanded")
 apply_base_theme()
 
+# ---------------- Global CSS (includes tab fix) ----------------
 st.markdown("""
 <style>
-/* Hard reset top spacing */
+/* Reset */
 html, body { margin:0 !important; padding:0 !important; }
 [data-testid="stAppViewContainer"] { padding-top:0 !important; }
 main.block-container { padding-top:0 !important; margin-top:0 !important; }
@@ -27,6 +28,8 @@ header[data-testid="stHeader"], div[data-testid="stToolbar"] { display:none !imp
 
 /* Rail wrapper */
 .edge-rail-wrap { position: sticky; top: 0; height: 100vh; }
+
+/* Main scroll */
 .main-scroll { height: 100vh; overflow: auto; padding: 12px 16px 24px; }
 
 /* Edge rail */
@@ -49,22 +52,31 @@ header[data-testid="stHeader"], div[data-testid="stToolbar"] { display:none !imp
 }
 .edge-rail .sep {height:1px;background:#e9edf5;margin:.55rem 0;}
 
-/* Tiny tab (custom HTML) */
-.rail-tab {
-  position: absolute !important;
-  right: -12px; top: 50%; transform: translateY(-50%);
-  width: 24px; height: 48px;
-  background: #fff; border: 1px solid #e5e7eb;
-  border-radius: 0 8px 8px 0;
-  box-shadow: 2px 0 4px rgba(0,0,0,.07);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; cursor: pointer; z-index: 100;
-  user-select: none;
+/* Tiny tab – forces it outside the column */
+button[data-testid="stButton"][key="rail_tab"] {
+    position: absolute !important;
+    right: -12px !important; top: 50%; transform: translateY(-50%);
+    width: 24px !important; height: 48px !important;
+    background: #fff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 0 8px 8px 0 !important;
+    box-shadow: 2px 0 4px rgba(0,0,0,.07) !important;
+    font-size: 14px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 1000 !important;
+    cursor: pointer;
+    min-width: unset !important;
+    padding: 0 !important;
 }
-.rail-tab:hover { background: #f8fafc; border-color: #cbd5e1; }
+button[data-testid="stButton"][key="rail_tab"]:hover {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+}
 
-/* Other styles (unchanged) */
-.kpi-card, .meter, .badge, .topic-title, .q-prompt, .verdict, .section-title, .divider { /* keep all your original styles */ }
+/* Allow overflow for the tab */
+.edge-rail-col > div { overflow: visible !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,13 +95,12 @@ if "rail_open" not in st.session_state:
 
 def _toggle_rail():
     st.session_state.rail_open = not st.session_state.rail_open
-    st.rerun()
 
 def _safe_pct(n, d): return int(round(100 * n / d)) if d else 0
 
-# ---------------- (All your functions: _render_topic_card, views, etc.) ----------------
-# ... [PASTE ALL YOUR ORIGINAL FUNCTIONS HERE] ...
-# (I'm omitting them for brevity — keep them 100% unchanged)
+# ---------------- (Paste ALL your original functions here) ----------------
+# _render_topic_card, view_dashboard, view_topics, etc.
+# → Keep them exactly as in your original code
 
 # ---------------- Layout ----------------
 rail_w_exp = 0.18
@@ -104,32 +115,13 @@ with rail_col:
     rail_cls = "edge-rail collapsed" if not st.session_state.rail_open else "edge-rail"
     st.markdown(f"<div class='{rail_cls}' style='position:relative;'>", unsafe_allow_html=True)
 
-    # ---- Custom HTML Tab (click triggers JS → Python) ----
+    # Tiny tab button
     tab_icon = "Left Arrow" if st.session_state.rail_open else "Right Arrow"
-    st.markdown(f"""
-    <div class="rail-tab" onclick="window.parent.document.dispatchEvent(new Event('rail_toggle_click'))">
-        {tab_icon}
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ---- JS Listener to call Python ----
-    components.html(f"""
-    <script>
-    if (!window.railListenerAdded) {{
-        window.parent.document.addEventListener('rail_toggle_click', () => {{
-            Streamlit.setComponentValue('toggle');
-        }});
-        window.railListenerAdded = true;
-    }}
-    </script>
-    """, height=0)
-
-    # ---- Python catches the JS event ----
-    if st._is_running_with_streamlit and 'toggle' in st.session_state:
+    if st.button(tab_icon, key="rail_tab", help="Toggle sidebar"):
         _toggle_rail()
-        del st.session_state['toggle']
+        st.rerun()
 
-    # ---- Rail Content (only when expanded) ----
+    # Content (only when expanded)
     if st.session_state.rail_open:
         st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
         st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
@@ -155,8 +147,8 @@ with rail_col:
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
         auth_logout_button()
 
-    st.markdown("</div>", unsafe_allow_html=True)  # end rail
-    st.markdown("</div>", unsafe_allow_html=True)  # end wrap
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with main_col:
     st.markdown("<div class='main-scroll'>", unsafe_allow_html=True)
