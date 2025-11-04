@@ -41,8 +41,6 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 [data-testid="stSidebar"] {background:var(--sidebar-bg); top:56px !important; height:calc(100vh - 56px) !important;}
 [data-testid="collapsedControl"] {top:56px !important;}
 [data-testid="stSidebarUserContent"] {padding:1rem 0.75rem;}
-.sidebar-title {font-weight:900; font-size:1.1rem; margin:0 0 .75rem; letter-spacing:.2px;}
-.sidebar-title span {color:var(--accent);}
 .sidebar-sep {height:1px; background:var(--border); margin:1rem 0;}
 .stButton>button {width:100%; border-radius:8px; padding:.5rem .75rem; margin-bottom:.5rem; background:var(--bg); border:1px solid var(--border); transition:all 0.2s; font-weight:500;}
 .stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent);}
@@ -199,8 +197,6 @@ st.markdown(
 )
 
 # Sidebar navigation
-st.sidebar.markdown("<div class='sidebar-title'>PSITE <span>Mastery</span></div>", unsafe_allow_html=True)
-
 nav = {
     "Dashboard": "dashboard",
     "Score Topics": "topics",
@@ -367,21 +363,21 @@ elif view == "quiz":
             if st.button("Finish"):
                 st.session_state.quiz_finished = True
 
-        # ---- REVEAL ----
-        if row["id"] in st.session_state.quiz_revealed:
-            correct = (choice == row["correct"])
-            verdict = "verdict-ok" if correct else "verdict-err"
-            txt = "Correct" if correct else "Incorrect"
-            st.markdown(f"<span class='verdict {verdict}'>{txt}</span>", unsafe_allow_html=True)
-            if row.get("explanation"):
-                st.markdown(row["explanation"], unsafe_allow_html=True)
-            _record_and_update(row, correct)
+            # ---- REVEAL ----
+            if row["id"] in st.session_state.quiz_revealed:
+                correct = (choice == row["correct"])
+                verdict = "verdict-ok" if correct else "verdict-err"
+                txt = "Correct" if correct else "Incorrect"
+                st.markdown(f"<span class='verdict {verdict}'>{txt}</span>", unsafe_allow_html=True)
+                if row.get("explanation"):
+                    st.markdown(row["explanation"], unsafe_allow_html=True)
+                _record_and_update(row, correct)
 
-        # ---- FINISH ----
-        if st.session_state.quiz_finished:
-            scored = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
-            correct_n = sum(1 for qid in scored if pool.set_index("id").loc[qid, "correct"] == st.session_state.quiz_answers[qid])
-            denom = len(scored) or len(pool)
-            st.success(f"Score: {correct_n}/{denom}")
+            # ---- FINISH ----
+            if st.session_state.quiz_finished:
+                scored = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
+                correct_n = sum(1 for qid in scored if pool.set_index("id").loc[qid, "correct"] == st.session_state.quiz_answers[qid])
+                denom = len(scored) or len(pool)
+                st.success(f"Score: {correct_n}/{denom}")
 
 st.markdown("</div>", unsafe_allow_html=True)   # .main
