@@ -200,7 +200,7 @@ with header_col:
 
 rail_open = st.session_state.get("rail_open", True)
 rail_w, main_w = (0.19, 0.81) if rail_open else (0.03, 0.97)
-rail, main = st.columns([rail_w, main_w], gap="none")
+rail, main = st.columns([rail_w, main_w], gap="small")
 
 # ---------- RAIL ----------
 with rail:
