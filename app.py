@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
@@ -20,48 +19,29 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Base theme (from psite_core) + local page-specific CSS to preserve the exact look/feel
+# Theme + base CSS from core
 apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
+# --------- Page-local CSS (sleek dashboard + topics the way you liked) ----------
 st.markdown("""
 <style>
-/* Keep main content tight like your preferred layout; expands when sidebar collapses */
-.block-container { padding-top: 10px !important; }
+/* Make main content expand when sidebar collapses (Streamlit default) */
+/* Keep top padding minimal and sleek */
+.block-container { padding-top: 12px !important; }
 
-/* Section headers */
+/* Section header + divider */
 .section-title{ font-weight:700; margin:.2rem 0 .6rem 0; }
 .divider{height:1px;background:var(--border);margin:1rem 0;}
 
-/* Sidebar brand — always visible and never covered */
+/* Sidebar brand pinned inside the sidebar (prevents overlap) */
 .sb-brand { font-weight:900; font-size:1.15rem; letter-spacing:.2px; margin:.2rem 0 1rem 0; }
 .sb-brand span{ color: var(--accent); }
 
-/* Topics grid: exact compact 3-column layout */
-.topics-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
-
-/* Topic cards: single bubble containing title + progress + actions */
-.topic-card{
-  border:1px solid var(--border); border-radius:14px; background:#fff; padding:.75rem;
-  box-shadow:0 1px 4px rgba(0,0,0,.03); display:flex; gap:.55rem; flex-direction:column;
-}
-.topic-title{ font-weight:600; font-size:.98rem; line-height:1.2; }
-.topic-row{ display:flex; align-items:center; gap:.6rem; }
-.meter{ flex:1; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
-.meter>span{ display:block; height:100%; background:var(--accent); width:0%; }
-
-.topic-actions{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top: .2rem; }
-.btn{ display:inline-flex; align-items:center; gap:.4rem; border:1px solid #dbe2ea; border-radius:999px;
-      padding:.28rem .66rem; background:#fff; cursor:pointer; font-size:.85rem; text-decoration:none; }
-.btn.sm{ font-size:.82rem; padding:.22rem .58rem; }
-.btn.green{ background:#e8f6ef; border-color:#b8e4cc; }
-.topic-meta{ font-size:.8rem; color:#6b7280; margin-left:auto; }
-
-/* Dashboard circles (minimal look: Completed / Correct) */
+/* Dashboard circular stats (no JS; inline --val) */
 .circle-stat{ display:flex; flex-direction:column; align-items:center; gap:.4rem; }
 .circle{
-  --val: 0.0;
   width:120px; height:120px; border-radius:50%;
   background:
     radial-gradient(closest-side, #fff 78%, transparent 80% 100%),
@@ -81,19 +61,34 @@ st.markdown("""
 }
 .cat-pill.active{ background:#e8f0ff; border-color:#c9d7ff; color:#113; font-weight:600; }
 
-/* Question block + verdict */
+/* Topics grid (3 columns) */
+.topics-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+
+/* Topic card: SINGLE bubble containing title + progress + actions (buttons inside) */
+.topic-card{
+  border:1px solid var(--border); border-radius:14px; background:#fff; padding:.75rem;
+  box-shadow:0 1px 4px rgba(0,0,0,.03); display:flex; gap:.55rem; flex-direction:column;
+}
+.topic-title{ font-weight:600; font-size:.98rem; line-height:1.2; }
+.topic-row{ display:flex; align-items:center; gap:.6rem; }
+.meter{ flex:1; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
+.meter>span{ display:block; height:100%; background:var(--accent); width:0%; }
+
+.topic-actions{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top:.2rem; }
+.btn{
+  display:inline-flex; align-items:center; gap:.4rem; border:1px solid #dbe2ea; border-radius:999px;
+  padding:.28rem .66rem; background:#fff; cursor:pointer; font-size:.85rem; text-decoration:none; color:#111;
+}
+.btn.sm{ font-size:.82rem; padding:.22rem .58rem; }
+.btn.green{ background:#e8f6ef; border-color:#b8e4cc; }
+.topic-meta{ font-size:.8rem; color:#6b7280; margin-left:auto; }
+
+/* Quiz block + verdict (unchanged sleek style) */
 .q-prompt { border:1px solid var(--border); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
 .verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
 .verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
 .verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
 </style>
-<script>
-  // Initialize circle fill (reads data-value attribute)
-  for (const el of window.parent.document.querySelectorAll('.circle')) {
-    const v = parseFloat(el.getAttribute('data-value') || '0');
-    el.style.setProperty('--val', isFinite(v) ? v : 0);
-  }
-</script>
 """, unsafe_allow_html=True)
 
 # =================== Auth Gate ===================
@@ -103,7 +98,7 @@ if not auth_is_authed():
     auth_login_form()
     st.stop()
 
-# =================== URL Action Router (review/quiz buttons) ===================
+# =================== Action Router (review/quiz via query params) ===================
 def _consume_action_query():
     qp = dict(st.query_params)
     action = qp.get("action")
@@ -154,16 +149,16 @@ with st.sidebar:
         st.session_state.quiz_mode = "spaced"
         st.session_state.view = "quiz"
         st.rerun()
-
     st.markdown("---")
     auth_logout_button()
 
 # =================== Utilities ===================
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
-    # Progress + readiness
+    """Single bubble card with title + progress bar + actions inside."""
     total_q = int(q_total_map.get(topic, 0))
     attempted = int(progress_map.get(topic, {}).get("total", 0))
     pct_done = int(100 * attempted / total_q) if total_q else 0
+
     review_words = get_review_word_count(topic)
     has_review = review_words >= 250
     has_quiz   = total_q >= 5
@@ -172,7 +167,6 @@ def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
     quiz_cls   = "btn sm" + (" green" if has_quiz else "")
     slug = topic_to_slug(topic)
 
-    # Single bubble (title + bar + actions inside)
     st.markdown(f"""
     <div class="topic-card">
       <div class="topic-title">{topic}</div>
@@ -205,7 +199,7 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
 def view_dashboard():
     st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
 
-    # Accuracy 0..1
+    # Accuracy (0..1)
     acc = overall_accuracy()
 
     # Completion = attempted / total available
@@ -215,31 +209,37 @@ def view_dashboard():
     total_attempted = sum(v.get("total", 0) for v in prog.values())
     completion = (total_attempted / total_available) if total_available else 0.0
 
-    # Daily avg from last 30 days
+    # Daily average from last 30 days
     series = accuracy_timeseries(days=30)
     attempts_last_30 = sum(n for _, _, n in series) if series else 0
     daily_avg = attempts_last_30 / 30 if attempts_last_30 else 0
 
+    # Sleek: two circles + a metric (no bar charts)
     c1, c2, c3 = st.columns([1,1,1])
     with c1:
-        st.markdown(f"""
-        <div class="circle-stat">
-          <div class="circle" data-value="{completion:.2f}"><span>{int(round(completion*100))}%</span></div>
-          <div class="label">Completed</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="circle-stat">
+              <div class="circle" style="--val:{completion:.2f}"><span>{int(round(completion*100))}%</span></div>
+              <div class="label">Completed</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     with c2:
-        st.markdown(f"""
-        <div class="circle-stat">
-          <div class="circle" data-value="{acc:.2f}"><span>{int(round(acc*100))}%</span></div>
-          <div class="label">Correct</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="circle-stat">
+              <div class="circle" style="--val:{acc:.2f}"><span>{int(round(acc*100))}%</span></div>
+              <div class="label">Correct</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     with c3:
         st.metric("Avg questions/day (30d)", f"{daily_avg:.1f}")
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-
     strong, weak = topic_strengths(k=5)
     c1, c2 = st.columns(2)
     with c1:
@@ -260,7 +260,7 @@ def view_topics():
     q_count = questions_count_by_topic()
     prog = load_progress()
 
-    # Category chips at top
+    # Category chips at the top (clean, readable)
     cat_names = ["All"] + list(cats.keys())
     current_cat = st.session_state.get("cat_filter", "All")
 
@@ -273,7 +273,7 @@ def view_topics():
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Read selection from query and clear
+    # Read selection from query, then clear it
     qp = dict(st.query_params)
     if "cat" in qp:
         try:
@@ -285,10 +285,10 @@ def view_topics():
             pass
         st.query_params.clear()
 
-    # Search
+    # Search box
     q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
 
-    # Assemble filtered list
+    # Filtered list
     topics = []
     for cat, arr in cats.items():
         if current_cat != "All" and cat != current_cat:
@@ -302,7 +302,7 @@ def view_topics():
         st.info("No topics match your filter.")
         return
 
-    # Render exact 3-col card grid
+    # Render 3-column grid, buttons INSIDE the card
     st.markdown("<div class='topics-grid'>", unsafe_allow_html=True)
     for t in topics:
         _render_topic_card(t, q_count, prog)
@@ -360,6 +360,7 @@ def view_quiz():
             default_idx = letters.index(st.session_state.quiz_answers[row["id"]])
         except Exception:
             default_idx = None
+
     choice = st.radio(
         "", letters, index=default_idx,
         format_func=lambda L: row[L],
