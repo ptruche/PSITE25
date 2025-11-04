@@ -37,19 +37,15 @@ st.markdown(
 html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(--text);}
 .css-1d391kg {background:var(--bg);}
 
-/* ---------- Layout ---------- */
-.edge-rail {padding:1rem 0.75rem; background:var(--sidebar-bg); border-right:1px solid var(--border); box-shadow:2px 0 8px rgba(0,0,0,0.05); height:100vh; overflow-y:auto;}
-.edge-rail-title {font-weight:900; font-size:1.1rem; margin:0 0 .75rem; letter-spacing:.2px;}
-.edge-rail-title span {color:var(--accent);}
-.edge-rail .stButton>button {width:100%; border-radius:8px; padding:.5rem .75rem; margin-bottom:.5rem; background:var(--bg); border:1px solid var(--border); transition:all 0.2s; font-weight:500;}
-.edge-rail .stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent);}
-.edge-rail .sep {height:1px; background:var(--border); margin:1rem 0;}
-.edge-rail .toggle-btn {background:transparent; border:none; padding:0; font-size:1.2rem; cursor:pointer; width:100%; text-align:left; color:var(--text);}
-
-/* ---------- Toggle handle when closed ---------- */
-.toggle-handle {background:var(--sidebar-bg); border-right:1px solid var(--border); box-shadow:2px 0 4px rgba(0,0,0,0.05);}
-.toggle-handle .stButton>button {width:100%; height:100vh; max-height:100vh; border:none; background:transparent; color:var(--text); font-size:1rem; padding:0; margin:0; display:flex; align-items:center; justify-content:center;}
-.toggle-handle .stButton>button:hover {background:var(--accent); color:white;}
+/* ---------- Sidebar ---------- */
+[data-testid="stSidebar"] {background:var(--sidebar-bg); top:56px !important; height:calc(100vh - 56px) !important;}
+[data-testid="collapsedControl"] {top:56px !important;}
+[data-testid="stSidebarUserContent"] {padding:1rem 0.75rem;}
+.sidebar-title {font-weight:900; font-size:1.1rem; margin:0 0 .75rem; letter-spacing:.2px;}
+.sidebar-title span {color:var(--accent);}
+.sidebar-sep {height:1px; background:var(--border); margin:1rem 0;}
+.stButton>button {width:100%; border-radius:8px; padding:.5rem .75rem; margin-bottom:.5rem; background:var(--bg); border:1px solid var(--border); transition:all 0.2s; font-weight:500;}
+.stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent);}
 
 /* ---------- Header (fixed) ---------- */
 .app-header {position:fixed; top:0; left:0; right:0; height:56px; background:var(--bg);
@@ -192,222 +188,200 @@ Q_COUNT   = questions_count_by_topic()
 PROGRESS  = load_progress()
 
 # ------------------------------------------------------------------ #
-# 8. LAYOUT – fixed header + collapsible rail
+# 8. LAYOUT – fixed header + sidebar
 # ------------------------------------------------------------------ #
-header_col, _ = st.columns([0.6, 0.4])
-with header_col:
-    st.markdown(
-        "<div class='app-header'>"
-        "<div class='logo'>PSITE <span>Mastery</span></div>"
-        "<div></div>"   # placeholder for future icons
-        "</div>",
-        unsafe_allow_html=True,
-    )
+st.markdown(
+    "<div class='app-header'>"
+    "<div class='logo'>PSITE <span>Mastery</span></div>"
+    "<div></div>"   # placeholder for future icons
+    "</div>",
+    unsafe_allow_html=True,
+)
 
-rail_open = st.session_state.get("rail_open", True)
+# Sidebar navigation
+st.sidebar.markdown("<div class='sidebar-title'>PSITE <span>Mastery</span></div>", unsafe_allow_html=True)
 
-if rail_open:
-    rail_w = 0.2
-    rail, main = st.columns([rail_w, 1 - rail_w], gap="small")
-    with rail:
-        st.markdown("<div class='edge-rail'>", unsafe_allow_html=True)
-        if st.button("◀", key="collapse_rail", use_container_width=True, help="Collapse sidebar"):
-            st.session_state.rail_open = False
-            st.rerun()
-        st.markdown("<div class='edge-rail-title'>PSITE <span>Mastery</span></div>", unsafe_allow_html=True)
+nav = {
+    "Dashboard": "dashboard",
+    "Score Topics": "topics",
+    "Make Quiz": "make_quiz",
+}
+for label, view in nav.items():
+    if st.sidebar.button(label, key=f"nav_{view}", use_container_width=True):
+        st.session_state.view = view
+        st.rerun()
 
-        nav = {
-            "Dashboard": "dashboard",
-            "Score Topics": "topics",
-            "Make Quiz": "make_quiz",
-        }
-        for label, view in nav.items():
-            if st.button(label, key=f"nav_{view}", use_container_width=True):
-                st.session_state.view = view
-                st.rerun()
+st.sidebar.markdown("<div class='sidebar-sep'></div>", unsafe_allow_html=True)
 
-        st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
+if st.sidebar.button("Spaced Repetition", key="nav_sr", use_container_width=True):
+    ids = sr_due_ids(limit=50)
+    pool = ALL_Q[ALL_Q["id"].isin(ids)].reset_index(drop=True) if not ALL_Q.empty else ALL_Q
+    _start_quiz(pool, mode="spaced")
 
-        if st.button("Spaced Repetition", key="nav_sr", use_container_width=True):
-            ids = sr_due_ids(limit=50)
-            pool = ALL_Q[ALL_Q["id"].isin(ids)].reset_index(drop=True) if not ALL_Q.empty else ALL_Q
-            _start_quiz(pool, mode="spaced")
-
-        st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
-        auth_logout_button()
-        st.markdown("</div>", unsafe_allow_html=True)
-else:
-    handle_w = 0.03
-    handle, main = st.columns([handle_w, 1 - handle_w], gap="small")
-    with handle:
-        st.markdown("<div class='toggle-handle'>", unsafe_allow_html=True)
-        if st.button("▶", key="expand_rail", use_container_width=True, help="Expand sidebar"):
-            st.session_state.rail_open = True
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div class='sidebar-sep'></div>", unsafe_allow_html=True)
+auth_logout_button()
 
 # ---------- MAIN ----------
-with main:
-    st.markdown("<div class='main'>", unsafe_allow_html=True)
+st.markdown("<div class='main'>", unsafe_allow_html=True)
 
-    # ------------------------------------------------------------------ #
-    # 9. VIEW ROUTER
-    # ------------------------------------------------------------------ #
-    view = st.session_state.get("view", "dashboard")
+# ------------------------------------------------------------------ #
+# 9. VIEW ROUTER
+# ------------------------------------------------------------------ #
+view = st.session_state.get("view", "dashboard")
 
-    # ---------- DASHBOARD ----------
-    if view == "dashboard":
-        st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-        attempted_all = sum(v.get("total", 0) for v in PROGRESS.values())
-        total_all = sum(Q_COUNT.get(t, 0) for t in Q_COUNT)
-        pct_done = _pct(attempted_all, total_all)
-        pct_acc  = int(round(overall_accuracy() * 100))
+# ---------- DASHBOARD ----------
+if view == "dashboard":
+    st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
+    attempted_all = sum(v.get("total", 0) for v in PROGRESS.values())
+    total_all = sum(Q_COUNT.get(t, 0) for t in Q_COUNT)
+    pct_done = _pct(attempted_all, total_all)
+    pct_acc  = int(round(overall_accuracy() * 100))
 
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(
-                f"""
-                <div class="kpi-card">
-                  <div class="kpi-ring" style="--val:{pct_done};"><div>{pct_done}%</div></div>
-                  <div style="display:flex;flex-direction:column;gap:2px;">
-                    <div style="font-weight:600;font-size:.95rem;">Completed</div>
-                    <div style="font-size:.82rem;color:#6b7280">{attempted_all} of {total_all}</div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with c2:
-            st.markdown(
-                f"""
-                <div class="kpi-card">
-                  <div class="kpi-ring" style="--val:{pct_acc};"><div>{pct_acc}%</div></div>
-                  <div style="display:flex;flex-direction:column;gap:2px;">
-                    <div style="font-weight:600;font-size:.95rem;">Accuracy</div>
-                    <div style="font-size:.82rem;color:#6b7280">All attempts</div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+              <div class="kpi-ring" style="--val:{pct_done};"><div>{pct_done}%</div></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="font-weight:600;font-size:.95rem;">Completed</div>
+                <div style="font-size:.82rem;color:#6b7280">{attempted_all} of {total_all}</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+              <div class="kpi-ring" style="--val:{pct_acc};"><div>{pct_acc}%</div></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="font-weight:600;font-size:.95rem;">Accuracy</div>
+                <div style="font-size:.82rem;color:#6b7280">All attempts</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    # ---------- TOPICS ----------
-    elif view == "topics":
-        st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
+# ---------- TOPICS ----------
+elif view == "topics":
+    st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
 
-        cats = get_category_map()
-        s1, s2 = st.columns([2, 1])
-        with s1:
-            q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
-        with s2:
-            cat_names = ["All"] + list(cats.keys())
-            chosen_cat = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
+    cats = get_category_map()
+    s1, s2 = st.columns([2, 1])
+    with s1:
+        q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
+    with s2:
+        cat_names = ["All"] + list(cats.keys())
+        chosen_cat = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
 
-        topics = []
-        for cat, arr in cats.items():
-            if chosen_cat != "All" and cat != chosen_cat:
+    topics = []
+    for cat, arr in cats.items():
+        if chosen_cat != "All" and cat != chosen_cat:
+            continue
+        for t in arr:
+            if q and q not in t.lower():
                 continue
-            for t in arr:
-                if q and q not in t.lower():
-                    continue
-                topics.append(t)
+            topics.append(t)
 
-        if not topics:
-            st.info("No topics match your filter.")
+    if not topics:
+        st.info("No topics match your filter.")
+    else:
+        cols = st.columns(3)
+        for i, t in enumerate(topics):
+            with cols[i % 3]:
+                _render_topic_card(t)
+
+# ---------- REVIEW ----------
+elif view == "review":
+    topic = st.session_state.get("active_topic")
+    if not topic:
+        st.info("Select a topic from **Score Topics**.")
+    else:
+        st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
+        path = resolve_review_path(topic)
+        if not path:
+            st.info("No review file yet – add a `.md` inside `data/reviews/` with the topic slug.")
         else:
-            cols = st.columns(3)
-            for i, t in enumerate(topics):
-                with cols[i % 3]:
-                    _render_topic_card(t)
+            with open(path, "r", encoding="utf-8") as f:
+                st.markdown(f.read(), unsafe_allow_html=True)
 
-    # ---------- REVIEW ----------
-    elif view == "review":
-        topic = st.session_state.get("active_topic")
-        if not topic:
-            st.info("Select a topic from **Score Topics**.")
-        else:
-            st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
-            path = resolve_review_path(topic)
-            if not path:
-                st.info("No review file yet – add a `.md` inside `data/reviews/` with the topic slug.")
-            else:
-                with open(path, "r", encoding="utf-8") as f:
-                    st.markdown(f.read(), unsafe_allow_html=True)
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+        if st.button("Quiz this topic ▶", use_container_width=True):
+            pool = load_questions_for_subjects([topic]).reset_index(drop=True)
+            _start_quiz(pool, mode="normal", topic=topic)
 
-            st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-            if st.button("Quiz this topic ▶", use_container_width=True):
-                pool = load_questions_for_subjects([topic]).reset_index(drop=True)
-                _start_quiz(pool, mode="normal", topic=topic)
+# ---------- MAKE QUIZ ----------
+elif view == "make_quiz":
+    st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
+    topics = ["Any"] + get_topics()
+    pick = st.multiselect("Choose topics (leave empty → Any)", topics, default=[])
+    n = st.number_input("Questions", 5, 100, 20, step=5)
+    if st.button("Start ▶", use_container_width=True):
+        sel = [] if ("Any" in pick or not pick) else pick
+        df = load_questions_for_subjects(sel)
+        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True)
+        _start_quiz(df, mode="normal")
 
-    # ---------- MAKE QUIZ ----------
-    elif view == "make_quiz":
-        st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
-        topics = ["Any"] + get_topics()
-        pick = st.multiselect("Choose topics (leave empty → Any)", topics, default=[])
-        n = st.number_input("Questions", 5, 100, 20, step=5)
-        if st.button("Start ▶", use_container_width=True):
-            sel = [] if ("Any" in pick or not pick) else pick
-            df = load_questions_for_subjects(sel)
-            df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True)
-            _start_quiz(df, mode="normal")
+# ---------- QUIZ ----------
+elif view == "quiz":
+    pool: pd.DataFrame = st.session_state.get("quiz_pool")
+    if pool is None or pool.empty:
+        st.info("No questions available for the selected mode.")
+    else:
+        i = st.session_state.quiz_idx
+        row = pool.iloc[i]
+        pct = int(((i + 1) / len(pool)) * 100)
+        st.progress(pct / 100)
+        suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
+        st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
-    # ---------- QUIZ ----------
-    elif view == "quiz":
-        pool: pd.DataFrame = st.session_state.get("quiz_pool")
-        if pool is None or pool.empty:
-            st.info("No questions available for the selected mode.")
-        else:
-            i = st.session_state.quiz_idx
-            row = pool.iloc[i]
-            pct = int(((i + 1) / len(pool)) * 100)
-            st.progress(pct / 100)
-            suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
-            st.caption(f"Question {i+1} of {len(pool)}{suffix}")
+        st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
-            st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
+        letters = ["A", "B", "C", "D", "E"]
+        prev = st.session_state.quiz_answers.get(row["id"])
+        default = letters.index(prev) if prev in letters else 0
+        choice = st.radio(
+            "", letters, index=default,
+            format_func=lambda L: row[L],
+            label_visibility="collapsed",
+            key=f"q_{row['id']}"
+        )
+        st.session_state.quiz_answers[row["id"]] = choice
 
-            letters = ["A", "B", "C", "D", "E"]
-            prev = st.session_state.quiz_answers.get(row["id"])
-            default = letters.index(prev) if prev in letters else 0
-            choice = st.radio(
-                "", letters, index=default,
-                format_func=lambda L: row[L],
-                label_visibility="collapsed",
-                key=f"q_{row['id']}"
-            )
-            st.session_state.quiz_answers[row["id"]] = choice
+        c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
+        with c1:
+            if st.button("Reveal", key=f"rev_{i}"):
+                st.session_state.quiz_revealed.add(row["id"])
+        with c2:
+            if st.button("Previous", disabled=i == 0):
+                st.session_state.quiz_idx = i - 1
+                st.rerun()
+        with c3:
+            if st.button("Next", disabled=i == len(pool) - 1):
+                st.session_state.quiz_idx = i + 1
+                st.rerun()
+        with c4:
+            if st.button("Finish"):
+                st.session_state.quiz_finished = True
 
-            c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
-            with c1:
-                if st.button("Reveal", key=f"rev_{i}"):
-                    st.session_state.quiz_revealed.add(row["id"])
-            with c2:
-                if st.button("Previous", disabled=i == 0):
-                    st.session_state.quiz_idx = i - 1
-                    st.rerun()
-            with c3:
-                if st.button("Next", disabled=i == len(pool) - 1):
-                    st.session_state.quiz_idx = i + 1
-                    st.rerun()
-            with c4:
-                if st.button("Finish"):
-                    st.session_state.quiz_finished = True
+        # ---- REVEAL ----
+        if row["id"] in st.session_state.quiz_revealed:
+            correct = (choice == row["correct"])
+            verdict = "verdict-ok" if correct else "verdict-err"
+            txt = "Correct" if correct else "Incorrect"
+            st.markdown(f"<span class='verdict {verdict}'>{txt}</span>", unsafe_allow_html=True)
+            if row.get("explanation"):
+                st.markdown(row["explanation"], unsafe_allow_html=True)
+            _record_and_update(row, correct)
 
-            # ---- REVEAL ----
-            if row["id"] in st.session_state.quiz_revealed:
-                correct = (choice == row["correct"])
-                verdict = "verdict-ok" if correct else "verdict-err"
-                txt = "Correct" if correct else "Incorrect"
-                st.markdown(f"<span class='verdict {verdict}'>{txt}</span>", unsafe_allow_html=True)
-                if row.get("explanation"):
-                    st.markdown(row["explanation"], unsafe_allow_html=True)
-                _record_and_update(row, correct)
+        # ---- FINISH ----
+        if st.session_state.quiz_finished:
+            scored = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
+            correct_n = sum(1 for qid in scored if pool.set_index("id").loc[qid, "correct"] == st.session_state.quiz_answers[qid])
+            denom = len(scored) or len(pool)
+            st.success(f"Score: {correct_n}/{denom}")
 
-            # ---- FINISH ----
-            if st.session_state.quiz_finished:
-                scored = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
-                correct_n = sum(1 for qid in scored if pool.set_index("id").loc[qid, "correct"] == st.session_state.quiz_answers[qid])
-                denom = len(scored) or len(pool)
-                st.success(f"Score: {correct_n}/{denom}")
-
-    st.markdown("</div>", unsafe_allow_html=True)   # .main
+st.markdown("</div>", unsafe_allow_html=True)   # .main
