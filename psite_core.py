@@ -326,7 +326,7 @@ def record_attempt(topic: str, qid: str, correct: bool):
     hist.append({"ts": int(time.time()), "topic": topic, "id": qid, "correct": bool(correct)})
     json.dump(hist, open(_user_file("history"), "w", encoding="utf-8"), indent=2)
     prog = load_progress()
-    rec = prog.setdefault(topic, {"total":0,"correct":0,"last_seen":None})
+    rec = prog.get(topic, {"total":0,"correct":0,"last_seen":None})
     rec["total"] += 1
     if correct: rec["correct"] += 1
     rec["last_seen"] = int(time.time())
