@@ -3,6 +3,7 @@ import os, re, glob, json, time, secrets, base64, hashlib, hmac, datetime as dt
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ------------------------------------------------------------------ #
 # PATHS
@@ -18,6 +19,12 @@ SECRET_FILE   = os.path.join(STATE_DIR, "secret.key")
 for p in [DATA_DIR, QUESTIONS_DIR, REVIEWS_DIR, STATE_DIR]:
     os.makedirs(p, exist_ok=True)
 
+COOKIE_AVAILABLE = True
+try:
+    from streamlit_cookies_manager import EncryptedCookieManager  # optional
+except Exception:
+    COOKIE_AVAILABLE = False
+
 # ------------------------------------------------------------------ #
 # THEME (only the CSS variables – UI lives in app.py)
 # ------------------------------------------------------------------ #
@@ -28,7 +35,7 @@ def apply_base_theme():
     )
 
 # ------------------------------------------------------------------ #
-# AUTH (unchanged, just tiny clean-ups)
+# APP SECRET / TOKENS
 # ------------------------------------------------------------------ #
 def _get_app_secret() -> bytes:
     if os.path.exists(SECRET_FILE):
@@ -40,60 +47,144 @@ def _get_app_secret() -> bytes:
         f.write(secret)
     return secret
 
-def issue_auth_token(username: str, days_valid: int = 7) -> str:
-    payload = {"u": username, "exp": int(time.time()) + days_valid * 86400}
-    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+def _b64url_encode(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+def _b64url_decode(s: str) -> bytes:
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + pad)
+
+def _sign(payload_b64: str) -> str:
     sig = hmac.new(_get_app_secret(), payload_b64.encode(), hashlib.sha256).digest()
-    sig_b64 = base64.urlsafe_b64encode(sig).decode().rstrip("=")
-    return f"{payload_b64}.{sig_b64}"
+    return _b64url_encode(sig)
+
+def issue_auth_token(username: str, days_valid: int = 7) -> str:
+    payload = {"u": username, "exp": int(time.time()) + days_valid*86400}
+    payload_b64 = _b64url_encode(json.dumps(payload, separators=(",",":")).encode())
+    sig = _sign(payload_b64)
+    return f"{payload_b64}.{sig}"
 
 def verify_auth_token(token: str) -> Optional[str]:
     if not token or "." not in token:
         return None
     payload_b64, sig = token.split(".", 1)
-    if not hmac.compare_digest(base64.urlsafe_b64encode(hmac.new(_get_app_secret(), payload_b64.encode(), hashlib.sha256).digest()).decode().rstrip("="), sig):
+    if not hmac.compare_digest(_sign(payload_b64), sig):
         return None
     try:
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4)))
+        payload = json.loads(_b64url_decode(payload_b64))
     except Exception:
         return None
-    if payload.get("exp", 0) < time.time():
+    if int(payload.get("exp", 0)) < int(time.time()):
         return None
     return payload.get("u")
 
 # ------------------------------------------------------------------ #
-# COOKIE / URL helpers (unchanged)
+# COOKIES / URL / LOCALSTORAGE
 # ------------------------------------------------------------------ #
 def _cookies():
-    try:
-        from streamlit_cookies_manager import EncryptedCookieManager
+    if COOKIE_AVAILABLE:
         cm = EncryptedCookieManager(prefix="psite_", password=_get_app_secret().hex())
         if not cm.ready():
             st.stop()
         return cm
+    class _Shim:
+        def __getitem__(self, k): return st.session_state.get(f"_cookie_{k}", "")
+        def __setitem__(self, k, v): st.session_state[f"_cookie_{k}"] = v
+        def get(self, k, default=""): return st.session_state.get(f"_cookie_{k}", default)
+        def save(self): pass
+    return _Shim()
+
+def _get_query_params() -> dict:
+    try:
+        return dict(st.query_params)
     except Exception:
-        class Shim:
-            def __getitem__(self, k): return st.session_state.get(f"_c_{k}", "")
-            def __setitem__(self, k, v): st.session_state[f"_c_{k}"] = v
-            def get(self, k, d=""): return st.session_state.get(f"_c_{k}", d)
-            def save(self): pass
-        return Shim()
+        return {k: (v[0] if isinstance(v, list) and v else v)
+                for k,v in st.experimental_get_query_params().items()}
+
+def _set_query_params(**kwargs):
+    try:
+        qp = dict(st.query_params)
+        for k,v in kwargs.items():
+            if v is None: qp.pop(k, None)
+            else: qp[k]=v
+        st.query_params.clear()
+        for k,v in qp.items():
+            st.query_params[k]=v
+    except Exception:
+        base = st.experimental_get_query_params()
+        for k,v in kwargs.items():
+            if v is None: base.pop(k, None)
+            else: base[k]=v
+        st.experimental_set_query_params(**base)
+
+def _js_set_token(token: str):
+    components.html(f"""
+    <script>
+      try {{
+        localStorage.setItem('psite_token', {json.dumps(token)});
+        const url = new URL(window.location);
+        url.searchParams.set('t', {json.dumps(token)});
+        window.history.replaceState(null, '', url.toString());
+        window.parent.postMessage({{streamlitRerun:true}}, "*");
+      }} catch (e) {{}}
+    </script>
+    """, height=0)
+
+def _js_restore_token_if_missing():
+    components.html("""
+    <script>
+      try {
+        const url = new URL(window.location);
+        const hasT = url.searchParams.get('t');
+        const saved = localStorage.getItem('psite_token');
+        if (!hasT && saved) {
+          url.searchParams.set('t', saved);
+          window.history.replaceState(null, '', url.toString());
+          window.parent.postMessage({streamlitRerun:true}, "*");
+        }
+      } catch (e) {}
+    </script>
+    """, height=0)
 
 def persist_login(username: str, remember_days: int = 7):
     st.session_state.auth_user = username
     token = issue_auth_token(username, remember_days)
-    _cookies()["auth"] = token
-    _cookies().save()
+    try:
+        cm = _cookies(); cm["auth"] = token; cm.save()
+    except Exception:
+        pass
+    _set_query_params(t=token)
+    _js_set_token(token)
 
 def clear_persisted_login():
     st.session_state.pop("auth_user", None)
-    _cookies()["auth"] = ""
-    _cookies().save()
+    try:
+        cm = _cookies(); cm["auth"] = ""; cm.save()
+    except Exception:
+        pass
+    _set_query_params(t=None)
+    components.html("""
+    <script>
+      try { localStorage.removeItem('psite_token'); } catch(e) {}
+      try { const url = new URL(window.location);
+            url.searchParams.delete('t');
+            window.history.replaceState(null, '', url.toString()); } catch(e){}
+    </script>
+    """, height=0)
 
 def try_auto_login_persisted():
     if st.session_state.get("auth_user"):
         return
-    token = _cookies().get("auth")
+    _js_restore_token_if_missing()
+    try:
+        cm = _cookies(); token = cm.get("auth")
+        user = verify_auth_token(token) if token else None
+        if user:
+            st.session_state.auth_user = user
+            return
+    except Exception:
+        pass
+    token = _get_query_params().get("t")
     user = verify_auth_token(token) if token else None
     if user:
         st.session_state.auth_user = user
