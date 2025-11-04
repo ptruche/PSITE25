@@ -43,6 +43,7 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 .edge-rail-title span {color:var(--accent);}
 .edge-rail .stButton>button {width:100%; border-radius:10px; padding:.45rem .6rem; margin-bottom:.35rem;}
 .edge-rail .sep {height:1px; background:var(--border); margin:.75rem 0;}
+.edge-rail .toggle-btn {background:transparent; border:none; padding:0; font-size:1.2rem; cursor:pointer; width:100%; text-align:left; color:var(--text);}
 
 /* ---------- Header (fixed) ---------- */
 .app-header {position:fixed; top:0; left:0; right:0; height:56px; background:var(--bg);
@@ -83,6 +84,8 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 /* ---------- Misc ---------- */
 .section-title {font-weight:700; font-size:1.05rem; margin:.2rem 0 .5rem;}
 .divider {height:1px; background:var(--border); margin:1rem 0;}
+.dot {width:9px; height:9px; border-radius:50%; background:#d1d5db; display:inline-block; margin-right:6px; border:1px solid #cbd5e1; transform:translateY(1px);}
+.dot.green {background:#22c55e; border-color:#22c55e;}
 </style>
 """,
     unsafe_allow_html=True,
@@ -196,15 +199,16 @@ with header_col:
     )
 
 rail_open = st.session_state.get("rail_open", True)
-rail_w, main_w = (0.19, 0.81) if rail_open else (0.06, 0.94)
-rail, main = st.columns([rail_w, main_w], gap="small")
+rail_w, main_w = (0.19, 0.81) if rail_open else (0.03, 0.97)
+rail, main = st.columns([rail_w, main_w], gap="none")
 
 # ---------- RAIL ----------
 with rail:
     st.markdown("<div class='edge-rail'>", unsafe_allow_html=True)
 
-    # toggle
-    if st.button("Hide" if rail_open else "Show", key="toggle_rail", use_container_width=True):
+    # Elegant toggle: use emoji or icon
+    toggle_label = "◀️" if rail_open else "▶️"
+    if st.button(toggle_label, key="toggle_rail", use_container_width=True, help="Toggle sidebar"):
         st.session_state.rail_open = not rail_open
         st.rerun()
 
@@ -231,7 +235,8 @@ with rail:
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
         auth_logout_button()
     else:
-        st.markdown("<div class='edge-rail-title'>PS</div>", unsafe_allow_html=True)
+        # Collapsed: show vertical text or icons if desired
+        pass
 
     st.markdown("</div>", unsafe_allow_html=True)
 
