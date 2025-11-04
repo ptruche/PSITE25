@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components  # for JS toggle
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
@@ -20,7 +19,7 @@ apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# --- Styles: keep your dashboard & topics styling intact, add a small header + toggle ---
+# Light add-on styles (keeps your theme.css intact)
 st.markdown("""
 <style>
 /* Donut rings for dashboard KPIs (unchanged) */
@@ -48,52 +47,33 @@ st.markdown("""
 .topic-row{display:flex;align-items:center;gap:.6rem;margin:.25rem 0 .35rem 0;}
 .topic-meta{font-size:.78rem;color:#6b7280}
 
-/* Minimal custom header with our own sidebar toggle */
+/* Header minimized (brand now in sidebar). Keep spacing stable. */
 .app-header{position:fixed;top:0;left:0;right:0;height:48px;background:#fff;
-  border-bottom:1px solid var(--border,#eef0f3);z-index:1000;display:flex;align-items:center;}
+  border-bottom:1px solid var(--border,#eef0f3);z-index:1;display:flex;align-items:center;}
 .app-header-inner{max-width:1200px;margin:0 auto;width:100%;padding:0 12px;
-  display:flex;align-items:center;gap:8px;}
-.header-btn{border:1px solid #e5e7eb;background:#fff;border-radius:10px;
-  padding:.35rem .6rem;cursor:pointer;font-size:1rem;line-height:1;}
-.header-spacer{flex:1;}
-/* We keep Streamlit's internal header visible so keyboard/menu still work on mobile,
-   but we shrink its footprint. */
-header[data-testid="stHeader"] { height: 0 !important; min-height: 0 !important; opacity: 0; }
+  display:flex;align-items:center;justify-content:space-between;}
+/* No visible brand in header anymore */
+.app-title{display:none;}
+header{visibility:hidden;height:0!important;}
 .block-container{padding-top:calc(48px + 12px)!important;}
 .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
 .divider{height:1px;background:var(--border,#eef0f3);margin:1rem 0;}
 
-/* Sidebar brand (so it's never covered) */
+/* Sidebar brand */
 .sb-brand{font-weight:900;font-size:1.15rem;letter-spacing:.2px;margin:.2rem 0 1rem 0;}
 .sb-brand span{color:var(--accent,#1d4ed8);}
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------ Header with custom sidebar toggle ------------------
+# ------------------ Header (kept, but brand hidden) ------------------
 st.markdown("""
 <div class="app-header">
   <div class="app-header-inner">
-    <button class="header-btn" id="psite-toggle">☰</button>
-    <div class="header-spacer"></div>
+    <div class="app-brand"><div class="app-title">PSITE Mastery</div></div>
+    <div></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
-
-# Inject JS: simulate Ctrl+B to toggle Streamlit sidebar reliably
-components.html("""
-<script>
-(function(){
-  const btn = document.getElementById("psite-toggle");
-  if (!btn) return;
-  btn.addEventListener("click", function(){
-    try{
-      const ev = new KeyboardEvent('keydown', {key:'b', ctrlKey:true, bubbles:true});
-      document.dispatchEvent(ev);
-    }catch(e){}
-  });
-})();
-</script>
-""", height=0)
 
 # ------------------ Auth Gate ------------------
 if not auth_is_authed():
@@ -102,8 +82,9 @@ if not auth_is_authed():
     auth_login_form()
     st.stop()
 
-# ------------------ Sidebar (brand here so it never gets covered) ------------------
+# ------------------ Sidebar (UPDATED ONLY) ------------------
 with st.sidebar:
+    # Brand lives here so it never gets covered by the sidebar itself
     st.markdown("""<div class="sb-brand">PSITE <span>Mastery</span></div>""", unsafe_allow_html=True)
 
     st.markdown("### Navigate")
@@ -128,7 +109,7 @@ with st.sidebar:
     st.markdown("---")
     auth_logout_button()
 
-# ------------------ Utilities (unchanged) ------------------
+# ------------------ Utilities (UNCHANGED) ------------------
 def _safe_pct(numer: int, denom: int) -> int:
     return int(round(100 * numer / denom)) if denom else 0
 
@@ -195,7 +176,7 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
-# ------------------ Views (unchanged) ------------------
+# ------------------ Views (UNCHANGED) ------------------
 def view_dashboard():
     q_count = questions_count_by_topic()
     prog = load_progress()
@@ -365,7 +346,7 @@ def view_quiz():
         denom = len(scored_ids) if scored_ids else len(pool)
         st.success(f"Score: {correct_n}/{denom}")
 
-# ------------------ Router (unchanged) ------------------
+# ------------------ Router (UNCHANGED) ------------------
 view = st.session_state.get("view", "dashboard")
 if view == "topics":
     view_topics()
