@@ -10,7 +10,7 @@ from psite_core import (
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
     sr_due_ids, sr_update, load_progress,
-    topic_to_slug, get_review_word_count, # readiness badges
+    topic_to_slug, get_review_word_count,
 )
 
 # ---------------- App shell / theme ----------------
@@ -129,6 +129,27 @@ header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; o
 /* Sections */
 .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
 .divider{height:1px;background:#eef0f3;margin:1rem 0;}
+
+/* ----- NEW: tiny tab on the edge ----- */
+button[data-testid="stButton"][key="rail_tab"] {
+    position: absolute !important;
+    right: -12px; top: 50%; transform: translateY(-50%);
+    width: 24px !important; height: 48px !important;
+    background: #fff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 0 8px 8px 0 !important;
+    box-shadow: 2px 0 4px rgba(0,0,0,.07) !important;
+    font-size: 14px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 10;
+    cursor: pointer;
+}
+button[data-testid="stButton"][key="rail_tab"]:hover {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -399,18 +420,28 @@ main_w = 1.0 - rail_w
 
 rail_col, main_col = st.columns([rail_w, main_w], gap="small")
 
+# ---------- RAIL ----------
 with rail_col:
     st.markdown("<div class='edge-rail-wrap'>", unsafe_allow_html=True)
-    collapsed = not st.session_state.rail_open
-    rail_cls = "edge-rail collapsed" if collapsed else "edge-rail"
+
+    rail_cls = "edge-rail collapsed" if not st.session_state.rail_open else "edge-rail"
     st.markdown(f"<div class='{rail_cls}'>", unsafe_allow_html=True)
 
-    if collapsed:
-        if st.button("Right Arrow", key="toggle_closed", help="Expand", use_container_width=False):
-            _toggle_rail(); st.rerun()
+    # ---- tiny tab on the right edge ----
+    tab_icon = "Left Arrow" if st.session_state.rail_open else "Right Arrow"
+    if st.button(
+        tab_icon,
+        key="rail_tab",
+        help="Collapse / Expand sidebar",
+        use_container_width=False,
+    ):
+        _toggle_rail()
+        st.rerun()
+
+    # ---- content ----
+    if not st.session_state.rail_open:
+        pass  # collapsed – nothing else
     else:
-        if st.button("Left Arrow", key="toggle_open", help="Collapse", use_container_width=False):
-            _toggle_rail(); st.rerun()
         st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
         st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
 
@@ -438,9 +469,10 @@ with rail_col:
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
         auth_logout_button()
 
-    st.markdown("</div>", unsafe_allow_html=True) # /.edge-rail
-    st.markdown("</div>", unsafe_allow_html=True) # /.edge-rail-wrap
+    st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail
+    st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail-wrap
 
+# ---------- MAIN ----------
 with main_col:
     st.markdown("<div class='main-scroll'>", unsafe_allow_html=True)
     render_main()
