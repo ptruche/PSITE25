@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
@@ -13,53 +12,45 @@ from psite_core import (
     topic_to_slug, get_review_word_count,
 )
 
-# ---------------- App shell / theme ----------------
-st.set_page_config(page_title="PSITE Mastery", page_icon=None,
-                   layout="wide", initial_sidebar_state="expanded")
-apply_base_theme()
+# ----------------------------------------------------------------------
+# 1. PAGE CONFIG + GLOBAL CSS (smooth rail + centred main)
+# ----------------------------------------------------------------------
+st.set_page_config(page_title="PSITE Mastery", layout="wide", initial_sidebar_state="expanded")
+apply_base_theme()                     # <-- keeps your original theme colours / fonts
 
-# ---------- GLOBAL CSS (smooth rail + centered main) ----------
 st.markdown("""
 <style>
-/* ---- Global reset ---- */
-html, body {margin:0;padding:0;}
-[data-testid="stAppViewContainer"] {padding-top:0 !important;}
-main .block-container {padding-top:0 !important;margin-top:0 !important;}
-header[data-testid="stHeader"], div[data-testid="stToolbar"] {display:none !important;}
+/* ---- GLOBAL RESET --------------------------------------------------- */
+html,body{margin:0;padding:0;height:100%;}
+[data-testid="stAppViewContainer"]{padding-top:0!important;}
+main .block-container{padding-top:0!important;margin-top:0!important;}
+header[data-testid="stHeader"],div[data-testid="stToolbar"]{display:none!important;}
 
-/* ---- Layout root ---- */
+/* ---- LAYOUT ROOT ---------------------------------------------------- */
 .layout-root{display:flex;gap:0;width:100%;height:100vh;overflow:hidden;}
-.edge-rail-col{position:relative;transition:width .25s cubic-bezier(.4,0,.2,1);}
-.main-col{flex:1;display:flex;flex-direction:column;}
 
-/* ---- Edge rail (anchored, full-height) ---- */
-.edge-rail-wrap{
-  position:sticky;top:0;height:100vh;
-  display:flex;align-items:stretch;
-}
+/* ---- RAIL (sticky, animated) ---------------------------------------- */
+.edge-rail-col{position:relative;transition:width .28s cubic-bezier(.4,0,.2,1);}
+.edge-rail-wrap{position:sticky;top:0;height:100vh;display:flex;align-items:stretch;}
 .edge-rail{
   width:100%;height:100%;overflow:hidden;
-  background:#f8fafc;border-right:1px solid #e2e8f0;
+  background:#f9fafb;border-right:1px solid #e2e8f0;
   padding:1rem 1rem;display:flex;flex-direction:column;gap:.75rem;
-  transition:width .25s cubic-bezier(.4,0,.2,1),
-             padding .25s cubic-bezier(.4,0,.2,1);
+  transition:width .28s cubic-bezier(.4,0,.2,1),padding .28s cubic-bezier(.4,0,.2,1);
 }
-.edge-rail.collapsed{
-  padding:.75rem .5rem;align-items:center;justify-content:center;
-}
+.edge-rail.collapsed{padding:.75rem .5rem;align-items:center;justify-content:center;}
 
-/* ---- Chevron button ---- */
+/* ---- RAIL BUTTONS --------------------------------------------------- */
 .rail-btn{
-  width:36px;height:36px;border-radius:50%;
-  background:#fff;border:1px solid #e5e7eb;
-  box-shadow:0 1px 2px rgba(0,0,0,.06);
-  display:grid;place-items:center;font-size:1.1rem;
-  cursor:pointer;transition:all .2s;
+  width:36px;height:36px;border-radius:50%;background:#fff;
+  border:1px solid #e5e7eb;box-shadow:0 1px 2px rgba(0,0,0,.06);
+  display:grid;place-items:center;font-size:1.1rem;cursor:pointer;
+  transition:all .2s;
 }
 .rail-btn:hover{border-color:#cbd5e1;}
 
-/* ---- Rail content (expanded) ---- */
-.edge-rail-title{font-weight:800;font-size:1.1rem;letter-spacing:.3px;color:#111;}
+/* ---- RAIL CONTENT (expanded) ---------------------------------------- */
+.edge-rail-title{font-weight:800;font-size:1.12rem;letter-spacing:.3px;color:#111;}
 .edge-rail-sub{font-size:.82rem;color:#64748b;margin-bottom:.5rem;}
 .edge-rail .nav-btn{
   width:100%;border-radius:10px;padding:.55rem .75rem;
@@ -69,26 +60,27 @@ header[data-testid="stHeader"], div[data-testid="stToolbar"] {display:none !impo
 .edge-rail .nav-btn:hover{background:#f1f5f9;border-color:#cbd5e1;}
 .edge-rail .sep{height:1px;background:#e2e8f0;margin:.75rem 0;}
 
-/* ---- Main scroll area ---- */
+/* ---- MAIN SCROLL (centred) ------------------------------------------ */
+.main-col{flex:1;display:flex;flex-direction:column;}
 .main-scroll{
   flex:1;overflow:auto;padding:1.5rem 2rem;
   display:flex;flex-direction:column;gap:1.5rem;
-  align-items:center;      /* <-- center everything horizontally */
+  align-items:center;               /* <-- everything centred */
 }
 
-/* ---- Dashboard KPI cards ---- */
+/* ---- KPI CARDS (dashboard) ------------------------------------------ */
 .kpi-wrap{display:flex;gap:1.5rem;flex-wrap:wrap;justify-content:center;}
 .kpi-card{
-  border:1px solid #e2e8f0;border-radius:1rem;background:#fff;
-  padding:1rem;box-shadow:0 2px 6px rgba(0,0,0,.04);
-  display:flex;align-items:center;gap:1rem;min-width:260px;
+  min-width:260px;border:1px solid #e2e8f0;border-radius:1rem;
+  background:#fff;padding:1rem;box-shadow:0 2px 6px rgba(0,0,0,.04);
+  display:flex;align-items:center;gap:1rem;
 }
 .kpi-ring{
   width:80px;height:80px;border-radius:50%;
   background:conic-gradient(var(--accent,#1d4ed8) calc(var(--val,0)*1%), #e5e7eb 0);
   display:grid;place-items:center;
 }
-.kpi-ring > div{
+.kpi-ring>div{
   background:#fff;border-radius:50%;width:54px;height:54px;
   display:grid;place-items:center;font-weight:700;font-size:1rem;color:#111;
 }
@@ -96,7 +88,7 @@ header[data-testid="stHeader"], div[data-testid="stToolbar"] {display:none !impo
 .kpi-label{font-size:.95rem;color:#111;font-weight:600;}
 .kpi-sub{font-size:.82rem;color:#64748b;}
 
-/* ---- Topic cards (unchanged) ---- */
+/* ---- TOPIC CARD (unchanged visual) ---------------------------------- */
 .meter{flex:1;height:8px;background:#f1f5f9;border-radius:999px;overflow:hidden;}
 .meter>span{display:block;height:100%;background:var(--accent,#1d4ed8);width:0%;}
 .dot{width:9px;height:9px;border-radius:50%;background:#d1d5db;
@@ -107,7 +99,6 @@ header[data-testid="stHeader"], div[data-testid="stToolbar"] {display:none !impo
        border:1px solid #e5e7eb;border-radius:999px;font-size:.78rem;
        color:#374151;background:#fff;}
 .topic-title{font-weight:600;font-size:1rem;line-height:1.2;margin-bottom:.25rem;}
-.topic-row{display:flex;align-items:center;gap:.6rem;margin:.3rem 0;}
 .topic-meta{font-size:.78rem;color:#64748b;}
 .q-prompt{border:1px solid #e2e8f0;background:#fafbfc;border-radius:10px;
           padding:12px;margin-bottom:6px;}
@@ -118,12 +109,14 @@ header[data-testid="stHeader"], div[data-testid="stToolbar"] {display:none !impo
 .section-title{font-weight:700;font-size:1.15rem;margin:.2rem 0 .6rem;}
 .divider{height:1px;background:#e2e8f0;margin:1.5rem 0;}
 
-/* ---- Misc ---- */
-.block-container div:empty{display:none !important;}
+/* ---- HIDE EMPTY BLOCKS ---------------------------------------------- */
+.block-container div:empty{display:none!important;}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- Auth & session ----------------
+# ----------------------------------------------------------------------
+# 2. SESSION / AUTH
+# ----------------------------------------------------------------------
 ensure_session_keys()
 try_auto_login_persisted()
 
@@ -133,9 +126,11 @@ if not auth_is_authed():
     auth_login_form()
     st.stop()
 
-# ---------------- Rail state ----------------
+# ----------------------------------------------------------------------
+# 3. STATE HELPERS
+# ----------------------------------------------------------------------
 if "rail_open" not in st.session_state:
-    st.session_state.rail_open = True          # expanded by default
+    st.session_state.rail_open = True          # default = expanded
 
 def _toggle_rail():
     st.session_state.rail_open = not st.session_state.rail_open
@@ -143,7 +138,9 @@ def _toggle_rail():
 def _safe_pct(numer: int, denom: int) -> int:
     return int(round(100 * numer / denom)) if denom else 0
 
-# ---------------- Topic card (unchanged) ----------------
+# ----------------------------------------------------------------------
+# 4. TOPIC CARD (unchanged)
+# ----------------------------------------------------------------------
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
     total_q = int(q_total_map.get(topic, 0))
     attempted = int(progress_map.get(topic, {}).get("total", 0))
@@ -151,10 +148,10 @@ def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
 
     review_words = get_review_word_count(topic)
     has_review = review_words >= 250
-    has_quiz = total_q >= 5
+    has_quiz   = total_q >= 5
 
     review_dot_cls = "dot" + (" green" if has_review else "")
-    quiz_dot_cls = "dot" + (" green" if has_quiz else "")
+    quiz_dot_cls   = "dot" + (" green" if has_quiz else "")
 
     with st.container(border=True):
         st.markdown(f"<div class='topic-title'>{topic}</div>", unsafe_allow_html=True)
@@ -200,7 +197,9 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
-# ---------------- Views (unchanged logic) ----------------
+# ----------------------------------------------------------------------
+# 5. VIEWS (logic unchanged)
+# ----------------------------------------------------------------------
 def view_dashboard():
     q_count = questions_count_by_topic()
     prog = load_progress()
@@ -280,7 +279,7 @@ def view_review():
     st.markdown(txt, unsafe_allow_html=True)
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    if st.button("Quiz this topic ▶", use_container_width=True):
+    if st.button("Quiz this topic", use_container_width=True):
         df = load_questions_for_subjects([topic])
         st.session_state.quiz_pool = df.reset_index(drop=True)
         st.session_state.quiz_idx = 0
@@ -296,9 +295,8 @@ def view_make_quiz():
     topics = ["Any"] + get_topics()
     pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
     n = st.number_input("Number of questions", 5, 100, 20, step=5)
-    if st.button("Start ▶", use_container_width=True):
-        if pick and "Any" in pick:
-            pick = []
+    if st.button("Start", use_container_width=True):
+        if pick and "Any" in pick: pick = []
         _start_quiz_from_topics(pick, int(n))
 
 def view_quiz():
@@ -373,27 +371,29 @@ def render_main():
     elif view == "quiz": view_quiz()
     else: view_dashboard()
 
-# ---------------- Layout (smooth rail + centered main) ----------------
-rail_w_exp = 0.20   # ~20% when open
-rail_w_col = 0.06   # ~6% when closed
+# ----------------------------------------------------------------------
+# 6. LAYOUT – rail + centred main
+# ----------------------------------------------------------------------
+rail_w_exp = 0.20          # 20 % when open
+rail_w_col = 0.06          # 6 % when closed
 rail_width = rail_w_exp if st.session_state.rail_open else rail_w_col
 
 rail_col, main_col = st.columns([rail_width, 1 - rail_width], gap="small")
 
-# ---- Sidebar (edge rail) ----
+# ---- LEFT RAIL -------------------------------------------------------
 with rail_col:
     st.markdown("<div class='edge-rail-wrap'>", unsafe_allow_html=True)
     rail_cls = "edge-rail collapsed" if not st.session_state.rail_open else "edge-rail"
     st.markdown(f"<div class='{rail_cls}'>", unsafe_allow_html=True)
 
     if not st.session_state.rail_open:
-        # collapsed – only chevron + tiny logo
-        if st.button("▶", key="toggle_closed", help="Expand", use_container_width=False):
+        # collapsed – tiny logo + chevron
+        if st.button("Right Arrow", key="toggle_closed", help="Expand", use_container_width=False):
             _toggle_rail(); st.rerun()
         st.markdown("<div style='font-weight:800;font-size:.9rem;color:#1d4ed8;'>PSITE</div>", unsafe_allow_html=True)
     else:
         # expanded
-        if st.button("◀", key="toggle_open", help="Collapse", use_container_width=False):
+        if st.button("Left Arrow", key="toggle_open", help="Collapse", use_container_width=False):
             _toggle_rail(); st.rerun()
         st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
         st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
@@ -406,7 +406,7 @@ with rail_col:
             st.session_state.view = "make_quiz"; st.rerun()
 
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
-        if st.button("Spaced Repetition ▶", key="nav_sr", use_container_width=True):
+        if st.button("Spaced Repetition Right Arrow", key="nav_sr", use_container_width=True):
             ids = sr_due_ids(limit=50)
             df_all = load_questions_frame()
             pool = df_all[df_all["id"].isin(ids)].reset_index(drop=True) if not df_all.empty else df_all
@@ -425,7 +425,7 @@ with rail_col:
     st.markdown("</div>", unsafe_allow_html=True)   # /.edge-rail
     st.markdown("</div>", unsafe_allow_html=True)   # /.edge-rail-wrap
 
-# ---- Main content (centered scroll) ----
+# ---- MAIN CONTENT ----------------------------------------------------
 with main_col:
     st.markdown("<div class='main-scroll'>", unsafe_allow_html=True)
     render_main()
