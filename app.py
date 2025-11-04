@@ -9,7 +9,7 @@ from psite_core import (
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
     sr_due_ids, sr_update, load_progress,
-    topic_to_slug, get_review_word_count,
+    topic_to_slug, get_review_word_count,  # readiness badges
 )
 
 # ---------------- App shell / theme ----------------
@@ -19,23 +19,48 @@ apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# ---------------- Styles (keeps your dashboard + topics visuals intact) ----------------
+# ---------------- Styles (dashboard + topics visuals preserved) ----------------
 st.markdown("""
 <style>
-/* Compact edge rail styles */
-.edge-rail-title{font-weight:900;font-size:1.05rem;margin:.15rem 0 .75rem 0; letter-spacing:.2px;}
-.edge-rail-sub{color:#6b7280; font-size:.82rem; margin:-.35rem 0 .6rem 0;}
-.edge-rail .stButton>button{width:100%; border-radius:10px; padding:.45rem .6rem;}
-.edge-rail .link-btn{display:block; width:100%; text-align:left; border:1px solid #e5e7eb;
-  border-radius:10px; padding:.45rem .6rem; margin-bottom:.4rem; background:#fff; color:#111;}
-.edge-rail .muted{color:#6b7280;}
-.edge-rail .small{font-size:.85rem;}
-.edge-rail .toggle{width:100%; border-radius:12px; padding:.5rem .6rem; font-weight:700;}
-.edge-rail .sep{height:1px; background:#eef0f3; margin:.6rem 0;}
+/* --- Minimal global chrome --- */
+header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; opacity:0; }
+.block-container{ padding-top:12px !important; }
 
-/* Minimal header to reclaim space; we don't rely on it for toggling anymore */
-header[data-testid="stHeader"] { height: 0 !important; min-height: 0 !important; opacity: 0; }
-.block-container{padding-top:12px !important;}
+/* --- Sleek edge rail --- */
+.edge-rail-wrap{ height:100vh; position:sticky; top:0; }
+.edge-rail{
+  background: #f6f8fc;          /* subtle tinted background */
+  border-right: 1px solid #e7ecf3;
+  height: 100%; padding: 10px 10px;
+  border-radius: 0 12px 12px 0;
+  box-shadow: 1px 0 0 rgba(0,0,0,0.02) inset;
+}
+.edge-rail.collapsed{
+  padding: 8px 6px;
+  background: #f6f8fc;
+}
+
+/* Toggle buttons */
+.rail-toggle-open, .rail-toggle-closed{
+  width: 36px; height: 36px; border-radius: 999px;
+  background: #ffffff; border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  display: grid; place-items: center; cursor: pointer;
+}
+.rail-toggle-open:hover, .rail-toggle-closed:hover{
+  border-color:#dbe2ea;
+}
+
+/* Remove default button chrome */
+.edge-rail .stButton>button{
+  background:transparent; border:none; padding:0; height:auto; width:auto;
+}
+
+/* Rail content */
+.edge-rail-title{font-weight:900;font-size:1.05rem;margin:.1rem 0 .6rem 0; letter-spacing:.2px;}
+.edge-rail-sub{color:#6b7280; font-size:.82rem; margin:-.3rem 0 .5rem 0;}
+.edge-rail .nav-btn{width:100%; border-radius:10px; padding:.48rem .65rem; border:1px solid #e5e7eb; background:#fff; margin-bottom:.45rem;}
+.edge-rail .sep{height:1px; background:#e9edf5; margin:.55rem 0;}
 
 /* Dashboard donuts */
 .kpi-wrap{display:flex;gap:24px;flex-wrap:wrap;}
@@ -81,9 +106,9 @@ if not auth_is_authed():
 
 # ---------------- Rail state ----------------
 if "rail_open" not in st.session_state:
-    st.session_state.rail_open = True  # default expanded
+    st.session_state.rail_open = True  # expanded by default
 
-def toggle_rail():
+def _toggle_rail():
     st.session_state.rail_open = not st.session_state.rail_open
 
 # ---------------- Utilities (unchanged logic) ----------------
@@ -148,7 +173,7 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
-# ---------------- Views (unchanged visuals) ----------------
+# ---------------- Views (your preferred visuals retained) ----------------
 def view_dashboard():
     q_count = questions_count_by_topic()
     prog = load_progress()
@@ -331,34 +356,37 @@ def render_main():
     else:
         view_dashboard()
 
-# ---------------- Layout with EDGE RAIL ----------------
-# When collapsed, the rail column is narrow; main area grows automatically.
-rail_w, main_w = (0.19, 0.81) if st.session_state.rail_open else (0.06, 0.94)
+# ---------------- Layout with SLEEK EDGE RAIL ----------------
+# Collapsed rail is a very slim strip with just a chevron.
+rail_w, main_w = (0.20, 0.80) if st.session_state.rail_open else (0.035, 0.965)
 rail_col, main_col = st.columns([rail_w, main_w], gap="small")
 
 with rail_col:
-    st.markdown("<div class='edge-rail'>", unsafe_allow_html=True)
-    # Toggle first (always visible)
-    if st.button(("⟨ Hide" if st.session_state.rail_open else "Show ⟩"),
-                 key="toggle_rail", use_container_width=True):
-        toggle_rail()
-        st.rerun()
-
+    st.markdown("<div class='edge-rail-wrap'>", unsafe_allow_html=True)
     if st.session_state.rail_open:
-        st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
-        st.markdown("<div class='edge-rail-sub small muted'>Navigate</div>", unsafe_allow_html=True)
+        st.markdown("<div class='edge-rail'>", unsafe_allow_html=True)
 
-        if st.button("Dashboard", use_container_width=True, key="nav_dash"):
+        # Top-left round toggle (chevron)
+        if st.button("",
+                     key="toggle_open",
+                     help="Collapse",
+                     use_container_width=False):
+            _toggle_rail(); st.rerun()
+        st.markdown('<div class="rail-toggle-open">⟨</div>', unsafe_allow_html=True)
+
+        # Brand + navigation
+        st.markdown("<div class='edge-rail-title' style='margin-top:.6rem;'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
+        st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
+
+        if st.button("Dashboard", key="nav_dash", use_container_width=True):
             st.session_state.view = "dashboard"; st.rerun()
-        if st.button("Score Topics", use_container_width=True, key="nav_topics"):
+        if st.button("Score Topics", key="nav_topics", use_container_width=True):
             st.session_state.view = "topics"; st.rerun()
-        if st.button("Make Quiz", use_container_width=True, key="nav_make_quiz"):
+        if st.button("Make Quiz", key="nav_make", use_container_width=True):
             st.session_state.view = "make_quiz"; st.rerun()
 
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
-
-        # Spaced repetition build (server-side setup) then go to quiz
-        if st.button("Spaced Repetition ▶", use_container_width=True, key="nav_sr"):
+        if st.button("Spaced Repetition ▶", key="nav_sr", use_container_width=True):
             ids = sr_due_ids(limit=50)
             df_all = load_questions_frame()
             pool = df_all[df_all["id"].isin(ids)].reset_index(drop=True) if not df_all.empty else df_all
@@ -373,12 +401,17 @@ with rail_col:
 
         st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
         auth_logout_button()
-    else:
-        # Collapsed: concise brand + section labels
-        st.markdown("<div class='edge-rail-title'>PS</div>", unsafe_allow_html=True)
-        st.caption("Menu")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail
+    else:
+        # Collapsed: slim rail with only a circular chevron centered vertically
+        st.markdown("<div class='edge-rail collapsed' style='display:flex;align-items:center;justify-content:center;'>", unsafe_allow_html=True)
+        if st.button("", key="toggle_closed", help="Expand", use_container_width=False):
+            _toggle_rail(); st.rerun()
+        st.markdown('<div class="rail-toggle-closed">⟩</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail-wrap
 
 with main_col:
     render_main()
