@@ -39,15 +39,14 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 
 /* ---------- Layout ---------- */
 [data-testid="stSidebar"] {background:var(--sidebar-bg); top:56px !important; height:calc(100vh - 56px) !important;}
-[data-testid="collapsedControl"] {top:56px !important;}
+[data-testid="collapsedControl"] {top:56px !important; height:56px !important; justify-content:center; align-items:center; color:var(--text); font-size:1.2rem;}
+[data-testid="collapsedControl"]:hover {color:var(--accent);}
+[data-testid="stSidebarCollapseButton"] {justify-content:flex-end; height:56px !important; align-items:center; display:flex; width:100%; color:var(--text); font-size:1.2rem; padding-right:1rem;}
+[data-testid="stSidebarCollapseButton"]:hover {color:var(--accent);}
 [data-testid="stSidebarUserContent"] {padding:1rem 0.75rem;}
 .sidebar-sep {height:1px; background:var(--border); margin:1rem 0;}
 .stButton>button {width:100%; border-radius:8px; padding:.5rem .75rem; margin-bottom:.5rem; background:var(--bg); border:1px solid var(--border); transition:all 0.2s; font-weight:500;}
 .stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent);}
-
-/* ---------- Sidebar toggle alignment ---------- */
-[data-testid="stSidebarCollapseButton"] {position: relative; top: -56px; right: 0; z-index: 10001; background:transparent; border:none; color:var(--text);}
-[data-testid="stSidebarCollapseButton"]:hover {color:var(--accent);}
 
 /* ---------- Header (fixed) ---------- */
 .app-header {position:fixed; top:0; left:0; right:0; height:56px; background:var(--bg);
