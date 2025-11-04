@@ -73,16 +73,6 @@ header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; o
   padding:10px 8px; align-items:center; justify-content:center;
 }
 
-/* Chevron buttons */
-.rail-btn{
-  width:40px; height:40px; border-radius:999px;
-  background:#fff; border:1px solid #e5e7eb;
-  box-shadow:0 1px 2px rgba(0,0,0,0.03);
-  display:grid; place-items:center;
-  font-size:18px; line-height:1; cursor:pointer;
-}
-.rail-btn:hover{ border-color:#dbe2ea; }
-
 /* Rail content */
 .edge-rail-title{font-weight:900;font-size:1.05rem;letter-spacing:.2px;margin:.25rem 0 .2rem 0;}
 .edge-rail-sub{color:#6b7280;font-size:.82rem;margin:.1rem 0 .4rem 0;}
@@ -130,7 +120,7 @@ header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; o
 .section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
 .divider{height:1px;background:#eef0f3;margin:1rem 0;}
 
-/* ----- NEW: tiny tab on the edge ----- */
+/* ----- NEW: tiny tab on the right edge of the rail ----- */
 button[data-testid="stButton"][key="rail_tab"] {
     position: absolute !important;
     right: -12px; top: 50%; transform: translateY(-50%);
@@ -438,10 +428,8 @@ with rail_col:
         _toggle_rail()
         st.rerun()
 
-    # ---- content ----
-    if not st.session_state.rail_open:
-        pass  # collapsed – nothing else
-    else:
+    # ---- content (only when expanded) ----
+    if st.session_state.rail_open:
         st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
         st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
 
