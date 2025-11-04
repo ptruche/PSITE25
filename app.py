@@ -13,28 +13,102 @@ from psite_core import (
     load_progress, topic_to_slug, slug_to_topic, get_review_word_count,
 )
 
-st.set_page_config(page_title="PSITE Mastery", page_icon=None, layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="PSITE Mastery",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
+# ---------- tiny CSS override to keep your previous spacing/arrangement ----------
+st.markdown("""
+<style>
+/* Ensure content expands when sidebar is collapsed (default Streamlit behavior),
+   but tighten card grid spacing to the previous feel. */
+.block-container { padding-top: 10px !important; }
+
+/* Topic grid feel you liked */
+.topics-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+
+/* Keep topic cards compact and tidy as before */
+.topic-card{
+  border:1px solid var(--border); border-radius:14px; background:#fff; padding:.75rem;
+  box-shadow:0 1px 4px rgba(0,0,0,.03); display:flex; gap:.55rem; flex-direction:column;
+}
+.topic-title{ font-weight:600; font-size:.98rem; line-height:1.2; }
+.topic-row{ display:flex; align-items:center; gap:.6rem; }
+.meter{ flex:1; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
+.meter>span{ display:block; height:100%; background:var(--accent); width:0%; }
+
+/* Actions are INSIDE the card */
+.topic-actions{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top: .2rem; }
+.btn{ display:inline-flex; align-items:center; gap:.4rem; border:1px solid #dbe2ea; border-radius:999px;
+      padding:.28rem .66rem; background:#fff; cursor:pointer; font-size:.85rem; text-decoration:none; }
+.btn.sm{ font-size:.82rem; padding:.22rem .58rem; }
+.btn.green{ background:#e8f6ef; border-color:#b8e4cc; }
+.topic-meta{ font-size:.8rem; color:#6b7280; margin-left:auto; }
+
+/* Circle stats (minimal dashboard) */
+.circle-stat{ display:flex; flex-direction:column; align-items:center; gap:.4rem; }
+.circle{
+  --val: 0.0;
+  width:120px; height:120px; border-radius:50%;
+  background:
+    radial-gradient(closest-side, #fff 78%, transparent 80% 100%),
+    conic-gradient(var(--accent) calc(var(--val)*1turn), #eef2f9 0);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:1.15rem; color:#111;
+  border:1px solid var(--border);
+}
+.circle > span{ transform: translateY(-1px); }
+.circle + .label{ font-size:.9rem; color:#374151 }
+
+/* Category selector row at the top of the Score Topics page */
+.cat-row{ display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.4rem; }
+.cat-pill{
+  padding:.26rem .6rem; border:1px solid #dbe2ea; border-radius:999px; background:#fff; font-size:.85rem;
+  cursor:pointer; text-decoration:none; color:#111;
+}
+.cat-pill.active{ background:#e8f0ff; border-color:#c9d7ff; color:#113; font-weight:600; }
+
+/* Brand in sidebar (from psite_core theme); no fixed header */
+.sb-brand { font-weight:900; font-size:1.15rem; letter-spacing:.2px; margin:.2rem 0 1rem 0; }
+.sb-brand span{ color: var(--accent); }
+.section-title{ font-weight:700; margin:.2rem 0 .6rem 0; }
+.divider{height:1px;background:var(--border);margin:1rem 0;}
+.q-prompt { border:1px solid var(--border); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
+.verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
+.verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
+.verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
+</style>
+<script>
+  // Set progress values for circle stats (reads data-value attribute)
+  for (const el of window.parent.document.querySelectorAll('.circle')) {
+    const v = parseFloat(el.getAttribute('data-value') || '0');
+    el.style.setProperty('--val', isFinite(v) ? v : 0);
+  }
+</script>
+""", unsafe_allow_html=True)
+
 # ------------------ Auth Gate ------------------
 if not auth_is_authed():
-    # Keep the landing simple: no custom fixed header, just the login card
     st.markdown("#### Welcome")
     st.caption("Sign in to access your dashboard, topics, and quizzes.")
     auth_login_form()
     st.stop()
 
-# ------------------ Action Router via query params (for HTML buttons) ------------------
+# ------------------ Router via query params for HTML buttons ------------------
 def _consume_action_query():
     qp = dict(st.query_params)
     action = qp.get("action")
     slug = qp.get("topic")
     if action and slug:
         topic = slug_to_topic(slug)
-        # Clear action so we don't loop
-        st.query_params.clear()
+        st.query_params.clear()  # prevent loops
         if not topic:
             return
         if action == "review":
@@ -57,10 +131,7 @@ _consume_action_query()
 
 # ------------------ Sidebar ------------------
 with st.sidebar:
-    # Brand in sidebar so it never gets hidden behind anything
-    st.markdown("""
-    <div class="sb-brand">PSITE <span>Mastery</span></div>
-    """, unsafe_allow_html=True)
+    st.markdown("""<div class="sb-brand">PSITE <span>Mastery</span></div>""", unsafe_allow_html=True)
 
     st.markdown("### Navigate")
     if st.button("Dashboard", use_container_width=True):
@@ -87,22 +158,18 @@ with st.sidebar:
 
 # ------------------ Utilities ------------------
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
-    # Progress
     total_q = int(q_total_map.get(topic, 0))
     attempted = int(progress_map.get(topic, {}).get("total", 0))
     pct_done = int(100 * attempted / total_q) if total_q else 0
 
-    # Readiness signals
     review_words = get_review_word_count(topic)
     has_review = review_words >= 250
     has_quiz   = total_q >= 5
 
-    # Compose button classes
     review_cls = "btn sm" + (" green" if has_review else "")
     quiz_cls   = "btn sm" + (" green" if has_quiz else "")
 
     slug = topic_to_slug(topic)
-    # One sleek card (title + bar + actions) all inside the same bubble
     st.markdown(f"""
     <div class="topic-card">
       <div class="topic-title">{topic}</div>
@@ -120,7 +187,8 @@ def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
 
 def _start_quiz_from_topics(selected_topics: list, n: int):
     df = load_questions_for_subjects(selected_topics)
-    df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop_duplicate=True) if not df.empty else df
+    if not df.empty:
+        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True)
     st.session_state.quiz_pool = df
     st.session_state.quiz_idx = 0
     st.session_state.quiz_answers = {}
@@ -132,11 +200,11 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
 
 # ------------------ Views ------------------
 def view_dashboard():
-    # Clean, simple dashboard: two circle stats + daily average
     st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
 
-    # Compute overall correct and completion
-    acc = overall_accuracy()  # fraction 0..1
+    # Accuracy (0..1)
+    acc = overall_accuracy()
+
     # Completion = attempted / total available
     q_count = questions_count_by_topic()
     total_available = sum(q_count.values())
@@ -144,7 +212,7 @@ def view_dashboard():
     total_attempted = sum(v.get("total", 0) for v in prog.values())
     completion = (total_attempted / total_available) if total_available else 0.0
 
-    # Daily average
+    # Daily average (30 days)
     series = accuracy_timeseries(days=30)
     attempts_last_30 = sum(n for _, _, n in series) if series else 0
     daily_avg = attempts_last_30 / 30 if attempts_last_30 else 0
@@ -169,8 +237,6 @@ def view_dashboard():
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-    # Strength/weakness quick-look
-    from psite_core import topic_strengths
     strong, weak = topic_strengths(k=5)
     c1, c2 = st.columns(2)
     with c1:
@@ -186,18 +252,42 @@ def view_dashboard():
 
 def view_topics():
     st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
+
     cats = get_category_map()
     q_count = questions_count_by_topic()
     prog = load_progress()
 
-    # Top header: category pills + search
+    # Category header (top) + search (like your earlier layout)
     cat_names = ["All"] + list(cats.keys())
-    chosen = st.segmented_control("Category", cat_names, selection_mode="single", default="All")
+    # Build manual pill bar to keep your previous aesthetic (instead of segmented_control)
+    current_cat = st.session_state.get("cat_filter", "All")
+    pill_cols = st.columns(len(cat_names))
+    for i, name in enumerate(cat_names):
+        with pill_cols[i]:
+            active = (name == current_cat)
+            html = f"<a class='cat-pill{' active' if active else ''}' href='?cat={i}'>{name}</a>"
+            st.markdown(html, unsafe_allow_html=True)
+
+    # Read cat selection from query (so pills work without reflow glitches)
+    qp = dict(st.query_params)
+    if "cat" in qp:
+        try:
+            idx = int(qp["cat"])
+            if 0 <= idx < len(cat_names):
+                current_cat = cat_names[idx]
+                st.session_state["cat_filter"] = current_cat
+        except Exception:
+            pass
+        # Clear param after capture
+        st.query_params.clear()
+
+    # Search box
     q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
 
+    # Compose topic list
     topics = []
     for cat, arr in cats.items():
-        if chosen != "All" and cat != chosen: 
+        if current_cat != "All" and cat != current_cat:
             continue
         for t in arr:
             if q and q not in t.lower():
@@ -208,10 +298,11 @@ def view_topics():
         st.info("No topics match your filter.")
         return
 
-    cols = st.columns(3)
-    for i, t in enumerate(topics):
-        with cols[i % 3]:
-            _render_topic_card(t, q_count, prog)
+    # Render in the compact 3-column grid you liked
+    st.markdown("<div class='topics-grid'>", unsafe_allow_html=True)
+    for t in topics:
+        _render_topic_card(t, q_count, prog)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def view_review():
     topic = st.session_state.get("active_topic") or ""
@@ -236,17 +327,9 @@ def view_make_quiz():
     pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
     n = st.number_input("Number of questions", 5, 100, 20, step=5)
     if st.button("Start ▶", use_container_width=True):
-        if pick and "Any" in pick: pick = []
-        df = load_questions_for_subjects(pick)
-        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
-        st.session_state.quiz_pool = df
-        st.session_state.quiz_idx = 0
-        st.session_state.quiz_answers = {}
-        st.session_state.quiz_revealed = set()
-        st.session_state.quiz_finished = False
-        st.session_state.quiz_mode = "normal"
-        st.session_state.view = "quiz"
-        st.rerun()
+        if pick and "Any" in pick:
+            pick = []
+        _start_quiz_from_topics(pick, int(n))
 
 def view_quiz():
     pool: pd.DataFrame = st.session_state.get("quiz_pool")
@@ -267,8 +350,18 @@ def view_quiz():
     st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
     letters = ["A","B","C","D","E"]
-    default_idx = letters.index(st.session_state.quiz_answers[row["id"]]) if row["id"] in st.session_state.quiz_answers else None
-    choice = st.radio("", letters, index=default_idx, format_func=lambda L: row[L], label_visibility="collapsed", key=f"q_{row['id']}")
+    default_idx = None
+    if row["id"] in st.session_state.quiz_answers:
+        try:
+            default_idx = letters.index(st.session_state.quiz_answers[row["id"]])
+        except Exception:
+            default_idx = None
+    choice = st.radio(
+        "", letters, index=default_idx,
+        format_func=lambda L: row[L],
+        label_visibility="collapsed",
+        key=f"q_{row['id']}"
+    )
     st.session_state.quiz_answers[row["id"]] = choice
 
     c1, c2, c3, c4 = st.columns([1,2,2,1])
@@ -301,11 +394,17 @@ def view_quiz():
             st.session_state[key] = True
 
     if st.session_state.quiz_finished:
-        correct_n = sum(
-            1 for qid, ans in st.session_state.quiz_answers.items()
-            if pool.set_index("id").loc[qid]["correct"] == ans and qid in st.session_state.quiz_revealed
-        )
-        revealed_n = sum(1 for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed)
+        correct_n = 0
+        revealed_n = 0
+        idx = pool.set_index("id")
+        for qid, ans in st.session_state.quiz_answers.items():
+            if qid in st.session_state.quiz_revealed:
+                revealed_n += 1
+                try:
+                    if idx.loc[qid]["correct"] == ans:
+                        correct_n += 1
+                except Exception:
+                    pass
         st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
 
 # ------------------ Router ------------------
