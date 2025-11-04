@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
-    auth_is_authed, auth_login_form, auth_logout_button,
+    auth_is_authed, auth_login_form, clear_persisted_login,
     get_category_map, get_topics, resolve_review_path,
     load_questions_frame, questions_count_by_topic, record_attempt,
     overall_accuracy, sr_due_ids, sr_update, load_progress,
@@ -100,7 +100,7 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 if not auth_is_authed():
     with st.container():
         st.markdown("#### Welcome to **PSITE Mastery**")
-        st.caption("Sign-in to unlock your personal dashboard, spaced-repetition, and analytics.")
+        st.caption("Sign-in to access your dashboard, topics, and quizzes.")
         auth_login_form()
     st.stop()
 
@@ -125,13 +125,13 @@ def _pct(n, d): return int(round(100 * n / d)) if d else 0
 
 def _render_topic_card(topic: str):
     total = int(Q_COUNT.get(topic, 0))
-    prog  = PROGRESS.get(topic, {})
+    prog = PROGRESS.get(topic, {})
     attempted = prog.get("total", 0)
     pct = _pct(attempted, total)
 
     rev_words = get_review_word_count(topic)
     has_review = rev_words >= 250
-    has_quiz   = total >= 5
+    has_quiz = total >= 5
 
     with st.container(border=True):
         st.markdown(f"<div class='topic-title'>{topic}</div>", unsafe_allow_html=True)
@@ -185,8 +185,8 @@ def _record_and_update(row: pd.Series, correct: bool):
 # ------------------------------------------------------------------ #
 # 7. PRE-COMPUTE counts & progress (once per session)
 # ------------------------------------------------------------------ #
-Q_COUNT   = questions_count_by_topic()
-PROGRESS  = load_progress()
+Q_COUNT = questions_count_by_topic()
+PROGRESS = load_progress()
 
 # ------------------------------------------------------------------ #
 # 8. LAYOUT – fixed header + sidebar
@@ -194,7 +194,7 @@ PROGRESS  = load_progress()
 st.markdown(
     "<div class='app-header'>"
     "<div class='logo'>PSITE <span>Mastery</span></div>"
-    "<div></div>"   # placeholder for future icons
+    "<div></div>" # placeholder for future icons
     "</div>",
     unsafe_allow_html=True,
 )
@@ -236,7 +236,7 @@ if view == "dashboard":
     attempted_all = sum(v.get("total", 0) for v in PROGRESS.values())
     total_all = sum(Q_COUNT.get(t, 0) for t in Q_COUNT)
     pct_done = _pct(attempted_all, total_all)
-    pct_acc  = int(round(overall_accuracy() * 100))
+    pct_acc = int(round(overall_accuracy() * 100))
 
     c1, c2 = st.columns(2)
     with c1:
