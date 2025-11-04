@@ -45,6 +45,10 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 .stButton>button {width:100%; border-radius:8px; padding:.5rem .75rem; margin-bottom:.5rem; background:var(--bg); border:1px solid var(--border); transition:all 0.2s; font-weight:500;}
 .stButton>button:hover {background:var(--accent); color:white; border-color:var(--accent);}
 
+/* ---------- Sidebar toggle alignment ---------- */
+[data-testid="stSidebarCollapseButton"] {position: relative; top: -56px; right: 0; z-index: 10001; background:transparent; border:none; color:var(--text);}
+[data-testid="stSidebarCollapseButton"]:hover {color:var(--accent);}
+
 /* ---------- Header (fixed) ---------- */
 .app-header {position:fixed; top:0; left:0; right:0; height:56px; background:var(--bg);
   border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 1rem;
