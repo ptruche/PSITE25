@@ -37,7 +37,7 @@ st.markdown(
 html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(--text);}
 .css-1d391kg {background:var(--bg);}
 
-/* ---------- Sidebar ---------- */
+/* ---------- Layout ---------- */
 [data-testid="stSidebar"] {background:var(--sidebar-bg); top:56px !important; height:calc(100vh - 56px) !important;}
 [data-testid="collapsedControl"] {top:56px !important;}
 [data-testid="stSidebarUserContent"] {padding:1rem 0.75rem;}
