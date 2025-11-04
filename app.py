@@ -15,7 +15,7 @@ from psite_core import (
 # ------------------------------------------------------------------ #
 st.set_page_config(
     page_title="PSITE Mastery",
-    page_icon="📚",
+    page_icon="https://i.fbcd.co/products/resized/resized-750-500/s005e-26-e07-mainpreview-11f76902af216746cd69fefb519f397472ae3f992e346a94a460aba7664c0a5b.jpg",
     layout="wide",
     initial_sidebar_state="expanded",
 )
