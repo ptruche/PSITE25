@@ -2,6 +2,9 @@
 import streamlit as st
 import pandas as pd
 
+# ----------------------------------------------------------------------
+# 1. IMPORT CORE + APPLY THEME.CSS
+# ----------------------------------------------------------------------
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
     auth_is_authed, auth_login_form, auth_logout_button,
@@ -12,107 +15,13 @@ from psite_core import (
     topic_to_slug, get_review_word_count,
 )
 
-# ----------------------------------------------------------------------
-# 1. PAGE CONFIG + GLOBAL CSS (smooth rail + centred main)
-# ----------------------------------------------------------------------
 st.set_page_config(page_title="PSITE Mastery", layout="wide", initial_sidebar_state="expanded")
-apply_base_theme()                     # <-- keeps your original theme colours / fonts
 
-st.markdown("""
-<style>
-/* ---- GLOBAL RESET --------------------------------------------------- */
-html,body{margin:0;padding:0;height:100%;}
-[data-testid="stAppViewContainer"]{padding-top:0!important;}
-main .block-container{padding-top:0!important;margin-top:0!important;}
-header[data-testid="stHeader"],div[data-testid="stToolbar"]{display:none!important;}
+# Load your theme.css (exactly as you wrote it)
+with open("theme.css", "r", encoding="utf-8") as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-/* ---- LAYOUT ROOT ---------------------------------------------------- */
-.layout-root{display:flex;gap:0;width:100%;height:100vh;overflow:hidden;}
-
-/* ---- RAIL (sticky, animated) ---------------------------------------- */
-.edge-rail-col{position:relative;transition:width .28s cubic-bezier(.4,0,.2,1);}
-.edge-rail-wrap{position:sticky;top:0;height:100vh;display:flex;align-items:stretch;}
-.edge-rail{
-  width:100%;height:100%;overflow:hidden;
-  background:#f9fafb;border-right:1px solid #e2e8f0;
-  padding:1rem 1rem;display:flex;flex-direction:column;gap:.75rem;
-  transition:width .28s cubic-bezier(.4,0,.2,1),padding .28s cubic-bezier(.4,0,.2,1);
-}
-.edge-rail.collapsed{padding:.75rem .5rem;align-items:center;justify-content:center;}
-
-/* ---- RAIL BUTTONS --------------------------------------------------- */
-.rail-btn{
-  width:36px;height:36px;border-radius:50%;background:#fff;
-  border:1px solid #e5e7eb;box-shadow:0 1px 2px rgba(0,0,0,.06);
-  display:grid;place-items:center;font-size:1.1rem;cursor:pointer;
-  transition:all .2s;
-}
-.rail-btn:hover{border-color:#cbd5e1;}
-
-/* ---- RAIL CONTENT (expanded) ---------------------------------------- */
-.edge-rail-title{font-weight:800;font-size:1.12rem;letter-spacing:.3px;color:#111;}
-.edge-rail-sub{font-size:.82rem;color:#64748b;margin-bottom:.5rem;}
-.edge-rail .nav-btn{
-  width:100%;border-radius:10px;padding:.55rem .75rem;
-  border:1px solid #e5e7eb;background:#fff;margin-bottom:.4rem;
-  font-weight:500;transition:background .2s,border-color .2s;
-}
-.edge-rail .nav-btn:hover{background:#f1f5f9;border-color:#cbd5e1;}
-.edge-rail .sep{height:1px;background:#e2e8f0;margin:.75rem 0;}
-
-/* ---- MAIN SCROLL (centred) ------------------------------------------ */
-.main-col{flex:1;display:flex;flex-direction:column;}
-.main-scroll{
-  flex:1;overflow:auto;padding:1.5rem 2rem;
-  display:flex;flex-direction:column;gap:1.5rem;
-  align-items:center;               /* <-- everything centred */
-}
-
-/* ---- KPI CARDS (dashboard) ------------------------------------------ */
-.kpi-wrap{display:flex;gap:1.5rem;flex-wrap:wrap;justify-content:center;}
-.kpi-card{
-  min-width:260px;border:1px solid #e2e8f0;border-radius:1rem;
-  background:#fff;padding:1rem;box-shadow:0 2px 6px rgba(0,0,0,.04);
-  display:flex;align-items:center;gap:1rem;
-}
-.kpi-ring{
-  width:80px;height:80px;border-radius:50%;
-  background:conic-gradient(var(--accent,#1d4ed8) calc(var(--val,0)*1%), #e5e7eb 0);
-  display:grid;place-items:center;
-}
-.kpi-ring>div{
-  background:#fff;border-radius:50%;width:54px;height:54px;
-  display:grid;place-items:center;font-weight:700;font-size:1rem;color:#111;
-}
-.kpi-meta{display:flex;flex-direction:column;gap:.15rem;}
-.kpi-label{font-size:.95rem;color:#111;font-weight:600;}
-.kpi-sub{font-size:.82rem;color:#64748b;}
-
-/* ---- TOPIC CARD (unchanged visual) ---------------------------------- */
-.meter{flex:1;height:8px;background:#f1f5f9;border-radius:999px;overflow:hidden;}
-.meter>span{display:block;height:100%;background:var(--accent,#1d4ed8);width:0%;}
-.dot{width:9px;height:9px;border-radius:50%;background:#d1d5db;
-     display:inline-block;margin-right:6px;border:1px solid #cbd5e1;
-     transform:translateY(1px);}
-.dot.green{background:#22c55e;border-color:#22c55e;}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:.2rem .55rem;
-       border:1px solid #e5e7eb;border-radius:999px;font-size:.78rem;
-       color:#374151;background:#fff;}
-.topic-title{font-weight:600;font-size:1rem;line-height:1.2;margin-bottom:.25rem;}
-.topic-meta{font-size:.78rem;color:#64748b;}
-.q-prompt{border:1px solid #e2e8f0;background:#fafbfc;border-radius:10px;
-          padding:12px;margin-bottom:6px;}
-.verdict{font-weight:600;padding:.22rem .6rem;border-radius:999px;
-         border:1px solid transparent;display:inline-flex;align-items:center;}
-.verdict-ok{background:#10b9811a;color:#065f46;border-color:#34d399;}
-.verdict-err{background:#ef44441a;color:#7f1d1d;border-color:#fca5a5;}
-.section-title{font-weight:700;font-size:1.15rem;margin:.2rem 0 .6rem;}
-.divider{height:1px;background:#e2e8f0;margin:1.5rem 0;}
-
-/* ---- HIDE EMPTY BLOCKS ---------------------------------------------- */
-.block-container div:empty{display:none!important;}
-</style>
-""", unsafe_allow_html=True)
+apply_base_theme()   # keep any extra JS you had in core
 
 # ----------------------------------------------------------------------
 # 2. SESSION / AUTH
@@ -139,7 +48,7 @@ def _safe_pct(numer: int, denom: int) -> int:
     return int(round(100 * numer / denom)) if denom else 0
 
 # ----------------------------------------------------------------------
-# 4. TOPIC CARD (unchanged)
+# 4. TOPIC CARD (uses your .topic-card, .tiny-btn, etc.)
 # ----------------------------------------------------------------------
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
     total_q = int(q_total_map.get(topic, 0))
@@ -153,37 +62,54 @@ def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
     review_dot_cls = "dot" + (" green" if has_review else "")
     quiz_dot_cls   = "dot" + (" green" if has_quiz else "")
 
-    with st.container(border=True):
-        st.markdown(f"<div class='topic-title'>{topic}</div>", unsafe_allow_html=True)
-        prog_cols = st.columns([1, 8, 1])
-        with prog_cols[1]:
-            st.markdown(f"<div class='meter'><span style='width:{pct_done}%;'></span></div>", unsafe_allow_html=True)
-        with prog_cols[2]:
-            st.markdown(f"<div style='text-align:right;font-size:.82rem;'>{pct_done}%</div>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div style='display:flex;align-items:center;gap:.5rem;margin:.35rem 0;'>"
-            f"<span class='badge'><span class='{review_dot_cls}'></span>Review</span>"
-            f"<span class='badge'><span class='{quiz_dot_cls}'></span>Quiz</span>"
-            f"<span class='topic-meta'>Q: {attempted}/{total_q}</span>"
-            f"</div>", unsafe_allow_html=True)
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("Review", key=f"rev_{topic}", use_container_width=True):
-                st.session_state.active_topic = topic
-                st.session_state.view = "review"
-                st.rerun()
-        with b2:
-            if st.button("Quiz", key=f"quiz_{topic}", use_container_width=True):
-                df = load_questions_for_subjects([topic])
-                st.session_state.active_topic = topic
-                st.session_state.quiz_pool = df.reset_index(drop=True)
-                st.session_state.quiz_idx = 0
-                st.session_state.quiz_answers = {}
-                st.session_state.quiz_revealed = set()
-                st.session_state.quiz_finished = False
-                st.session_state.quiz_mode = "normal"
-                st.session_state.view = "quiz"
-                st.rerun()
+    # ---- Card container (your .topic-card) ----
+    with st.container():
+        st.markdown(f"""
+        <div class="topic-card">
+            <div class="topic-title">{topic}</div>
+
+            <div style="display:flex;align-items:center;gap:.6rem;">
+                <div style="flex:1;height:8px;background:#f1f5f9;border-radius:999px;overflow:hidden;">
+                    <span style="display:block;height:100%;background:var(--accent);width:{pct_done}%;"></span>
+                </div>
+                <div style="font-size:.82rem;">{pct_done}%</div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:.5rem;">
+                <span class="tiny-btn{' secondary' if not has_review else ''}">
+                    <span class="{review_dot_cls}"></span> Review
+                </span>
+                <span class="tiny-btn{' secondary' if not has_quiz else ''}">
+                    <span class="{quiz_dot_cls}"></span> Quiz
+                </span>
+                <span style="margin-left:auto;font-size:.78rem;color:var(--muted);">
+                    Q: {attempted}/{total_q}
+                </span>
+            </div>
+
+            <div class="topic-actions">
+                <button class="tiny-btn" onclick="window.parent.location.hash='rev_{topic}'">Review</button>
+                <button class="tiny-btn" onclick="window.parent.location.hash='quiz_{topic}'">Quiz</button>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ---- Hidden Streamlit buttons (triggered by the HTML above) ----
+        if st.button("", key=f"rev_{topic}", help="Review", use_container_width=False):
+            st.session_state.active_topic = topic
+            st.session_state.view = "review"
+            st.rerun()
+        if st.button("", key=f"quiz_{topic}", help="Quiz", use_container_width=False):
+            df = load_questions_for_subjects([topic])
+            st.session_state.active_topic = topic
+            st.session_state.quiz_pool = df.reset_index(drop=True)
+            st.session_state.quiz_idx = 0
+            st.session_state.quiz_answers = {}
+            st.session_state.quiz_revealed = set()
+            st.session_state.quiz_finished = False
+            st.session_state.quiz_mode = "normal"
+            st.session_state.view = "quiz"
+            st.rerun()
 
 def _start_quiz_from_topics(selected_topics: list, n: int):
     df = load_questions_for_subjects(selected_topics)
@@ -198,7 +124,7 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.rerun()
 
 # ----------------------------------------------------------------------
-# 5. VIEWS (logic unchanged)
+# 5. VIEWS (logic unchanged, UI uses your theme classes)
 # ----------------------------------------------------------------------
 def view_dashboard():
     q_count = questions_count_by_topic()
@@ -212,26 +138,44 @@ def view_dashboard():
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
-        <div class="kpi-card">
-          <div class="kpi-ring" style="--val:{pct_done};">
-            <div>{pct_done}%</div>
-          </div>
-          <div class="kpi-meta">
-            <div class="kpi-label">Completed</div>
-            <div class="kpi-sub">{attempted_all} of {total_q_all} questions attempted</div>
-          </div>
+        <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);
+                    padding:1rem;box-shadow:0 1px 4px rgba(0,0,0,.03);
+                    display:flex;align-items:center;gap:1rem;min-width:260px;">
+            <div style="width:80px;height:80px;border-radius:50%;
+                        background:conic-gradient(var(--accent) calc({pct_done}*1%), #e5e7eb 0);
+                        display:grid;place-items:center;">
+                <div style="background:#fff;border-radius:50%;width:54px;height:54px;
+                            display:grid;place-items:center;font-weight:700;font-size:1rem;">
+                    {pct_done}%
+                </div>
+            </div>
+            <div>
+                <div style="font-size:.95rem;font-weight:600;">Completed</div>
+                <div style="font-size:.82rem;color:var(--muted);">
+                    {attempted_all} of {total_q_all} questions attempted
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
-        <div class="kpi-card">
-          <div class="kpi-ring" style="--val:{pct_correct};">
-            <div>{pct_correct}%</div>
-          </div>
-          <div class="kpi-meta">
-            <div class="kpi-label">Accuracy</div>
-            <div class="kpi-sub">Across all attempted questions</div>
-          </div>
+        <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);
+                    padding:1rem;box-shadow:0 1px 4px rgba(0,0,0,.03);
+                    display:flex;align-items:center;gap:1rem;min-width:260px;">
+            <div style="width:80px;height:80px;border-radius:50%;
+                        background:conic-gradient(var(--accent) calc({pct_correct}*1%), #e5e7eb 0);
+                        display:grid;place-items:center;">
+                <div style="background:#fff;border-radius:50%;width:54px;height:54px;
+                            display:grid;place-items:center;font-weight:700;font-size:1rem;">
+                    {pct_correct}%
+                </div>
+            </div>
+            <div>
+                <div style="font-size:.95rem;font-weight:600;">Accuracy</div>
+                <div style="font-size:.82rem;color:var(--muted);">
+                    Across all attempted questions
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -315,7 +259,7 @@ def view_quiz():
     suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
     st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
-    st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='border:1px solid var(--border);background:#fafbfc;border-radius:10px;padding:12px;margin-bottom:6px;'>{row['stem']}</div>", unsafe_allow_html=True)
 
     letters = ["A","B","C","D","E"]
     prev_choice = st.session_state.quiz_answers.get(row["id"])
@@ -344,9 +288,9 @@ def view_quiz():
 
     if row["id"] in st.session_state.quiz_revealed:
         is_correct = (choice == row["correct"])
-        verdict_class = "verdict-ok" if is_correct else "verdict-err"
-        verdict_text = "Correct" if is_correct else "Incorrect"
-        st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
+        verdict_cls = "verdict-ok" if is_correct else "verdict-err"
+        verdict_txt = "Correct" if is_correct else "Incorrect"
+        st.markdown(f"<span style='font-weight:600;padding:.22rem .6rem;border-radius:999px;display:inline-flex;align-items:center;background:{'#10b9811a' if is_correct else '#ef44441a'};color:{'#065f46' if is_correct else '#7f1d1d'};border:1px solid {'#34d399' if is_correct else '#fca5a5'};'>{verdict_txt}</span>", unsafe_allow_html=True)
         if str(row.get("explanation","")).strip():
             st.markdown(row["explanation"], unsafe_allow_html=True)
         key = f"scored_{row['id']}"
@@ -372,31 +316,48 @@ def render_main():
     else: view_dashboard()
 
 # ----------------------------------------------------------------------
-# 6. LAYOUT – rail + centred main
+# 6. LAYOUT – fixed header + animated rail + centred main
 # ----------------------------------------------------------------------
-rail_w_exp = 0.20          # 20 % when open
-rail_w_col = 0.06          # 6 % when closed
+rail_w_exp = 0.20
+rail_w_col = 0.06
 rail_width = rail_w_exp if st.session_state.rail_open else rail_w_col
 
 rail_col, main_col = st.columns([rail_width, 1 - rail_width], gap="small")
 
+# ---- FIXED HEADER (uses your .app-header) ----
+st.markdown("""
+<div class="app-header">
+    <div class="app-header-inner">
+        <div class="app-title">PSITE <span style="color:var(--accent);">Mastery</span></div>
+        <div></div> <!-- placeholder -->
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 # ---- LEFT RAIL -------------------------------------------------------
 with rail_col:
-    st.markdown("<div class='edge-rail-wrap'>", unsafe_allow_html=True)
+    st.markdown("<div style='position:sticky;top:0;height:100vh;display:flex;align-items:stretch;'>", unsafe_allow_html=True)
     rail_cls = "edge-rail collapsed" if not st.session_state.rail_open else "edge-rail"
-    st.markdown(f"<div class='{rail_cls}'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='{rail_cls}' style='width:100%;background:#f9fafb;padding:1rem;display:flex;flex-direction:column;gap:.75rem;transition:width .28s cubic-bezier(.4,0,.2,1),padding .28s cubic-bezier(.4,0,.2,1);'>", unsafe_allow_html=True)
 
     if not st.session_state.rail_open:
-        # collapsed – tiny logo + chevron
-        if st.button("Right Arrow", key="toggle_closed", help="Expand", use_container_width=False):
+        # three-dot grip
+        if st.button("", key="toggle_closed", help="Expand sidebar", use_container_width=False):
             _toggle_rail(); st.rerun()
-        st.markdown("<div style='font-weight:800;font-size:.9rem;color:#1d4ed8;'>PSITE</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="width:36px;height:36px;border-radius:50%;background:#fff;border:1px solid #e5e7eb;
+                    box-shadow:0 1px 2px rgba(0,0,0,.06);display:flex;flex-direction:column;
+                    align-items:center;justify-content:center;cursor:pointer;">
+            <div style="width:4px;height:4px;background:#94a3b8;border-radius:50%;margin:2px 0;"></div>
+            <div style="width:4px;height:4px;background:#94a3b8;border-radius:50%;margin:2px 0;"></div>
+            <div style="width:4px;height:4px;background:#94a3b8;border-radius:50%;margin:2px 0;"></div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        # expanded
-        if st.button("Left Arrow", key="toggle_open", help="Collapse", use_container_width=False):
+        if st.button("", key="toggle_open", help="Collapse sidebar", use_container_width=False):
             _toggle_rail(); st.rerun()
-        st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
-        st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:800;font-size:1.12rem;letter-spacing:.3px;'>PSITE <span style='color:var(--accent);'>Mastery</span></div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:.82rem;color:var(--muted);margin-bottom:.5rem;'>Navigate</div>", unsafe_allow_html=True)
 
         if st.button("Dashboard", key="nav_dash", use_container_width=True):
             st.session_state.view = "dashboard"; st.rerun()
@@ -405,8 +366,8 @@ with rail_col:
         if st.button("Make Quiz", key="nav_make", use_container_width=True):
             st.session_state.view = "make_quiz"; st.rerun()
 
-        st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
-        if st.button("Spaced Repetition Right Arrow", key="nav_sr", use_container_width=True):
+        st.markdown("<div style='height:1px;background:var(--border);margin:.75rem 0;'></div>", unsafe_allow_html=True)
+        if st.button("Spaced Repetition", key="nav_sr", use_container_width=True):
             ids = sr_due_ids(limit=50)
             df_all = load_questions_frame()
             pool = df_all[df_all["id"].isin(ids)].reset_index(drop=True) if not df_all.empty else df_all
@@ -419,14 +380,14 @@ with rail_col:
             st.session_state.view = "quiz"
             st.rerun()
 
-        st.markdown("<div class='sep'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:1px;background:var(--border);margin:.75rem 0;'></div>", unsafe_allow_html=True)
         auth_logout_button()
 
     st.markdown("</div>", unsafe_allow_html=True)   # /.edge-rail
-    st.markdown("</div>", unsafe_allow_html=True)   # /.edge-rail-wrap
+    st.markdown("</div>", unsafe_allow_html=True)   # /.sticky wrapper
 
-# ---- MAIN CONTENT ----------------------------------------------------
+# ---- MAIN CONTENT (centred, scrollable) ----
 with main_col:
-    st.markdown("<div class='main-scroll'>", unsafe_allow_html=True)
+    st.markdown("<div style='padding:1.5rem 2rem;display:flex;flex-direction:column;gap:1.5rem;align-items:center;'>", unsafe_allow_html=True)
     render_main()
     st.markdown("</div>", unsafe_allow_html=True)
