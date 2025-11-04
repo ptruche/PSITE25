@@ -12,36 +12,42 @@ from psite_core import (
     topic_to_slug, get_review_word_count,  # readiness badges
 )
 
-# --------------- App shell / theme ---------------
+# ---------------- App shell / theme ----------------
 st.set_page_config(page_title="PSITE Mastery", page_icon=None,
                    layout="wide", initial_sidebar_state="expanded")
 apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# --------------- Styles (keeps your dashboard/topics look) ---------------
+# ---------------- Styles (dashboard/topics unchanged) ----------------
 st.markdown("""
 <style>
-/* Hide default Streamlit header spacing */
+/* Remove default header gap */
 header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; opacity:0; }
-.block-container{ padding-top:12px !important; }
+.block-container{ padding-top:0 !important; }
 
-/* ===== Sleek custom edge rail ===== */
-.edge-rail-wrap{ height:100vh; position:sticky; top:0; }
+/* ===== Edge Rail (anchored, top-aligned, smooth) ===== */
+.layout-root{ display:flex; gap:0; width:100%; }
+.edge-rail-col{ position:relative; }
+.edge-rail-wrap{
+  position:sticky; top:0; height:100vh; /* anchor to top, full height */
+  display:flex; align-items:stretch;
+}
 .edge-rail{
-  background:#f6f8fc;
+  width:100%; height:100%; overflow:hidden; /* rail itself doesn't scroll */
+  background:#f5f7fb;
   border-right:1px solid #e7ecf3;
-  height:100%; padding:12px 12px;
+  padding:12px 12px;
   border-radius:0 12px 12px 0;
-  box-shadow:1px 0 0 rgba(0,0,0,0.02) inset;
-  display:flex; flex-direction:column; gap:8px;
+  box-shadow:1px 0 0 rgba(0,0,0,.02) inset;
+  display:flex; flex-direction:column; gap:8px; justify-content:flex-start;
+  transition: padding .22s ease, background .22s ease, border-color .22s ease;
 }
 .edge-rail.collapsed{
-  padding:8px 8px;
-  align-items:center; justify-content:center;
+  padding:10px 8px; align-items:center; justify-content:center;
 }
 
-/* Chevron buttons (visible, no empty labels) */
+/* Chevron buttons */
 .rail-btn{
   width:40px; height:40px; border-radius:999px;
   background:#fff; border:1px solid #e5e7eb;
@@ -60,6 +66,11 @@ header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; o
 }
 .edge-rail .sep{height:1px;background:#e9edf5;margin:.55rem 0;}
 
+/* Main area should scroll independently while rail stays put */
+.main-scroll{
+  height:100vh; overflow:auto; padding:12px 16px 24px;
+}
+
 /* Dashboard donuts */
 .kpi-wrap{display:flex;gap:24px;flex-wrap:wrap;}
 .kpi-card{border:1px solid var(--border,#eef0f3);border-radius:16px;background:#fff;
@@ -73,7 +84,7 @@ header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; o
 .kpi-label{font-size:.92rem;color:#374151;font-weight:600;}
 .kpi-sub{font-size:.82rem;color:#6b7280}
 
-/* Topic cards */
+/* Topic cards (unchanged visuals) */
 .meter{flex:1;height:8px;background:#f2f5fb;border-radius:999px;overflow:hidden;}
 .meter>span{display:block;height:100%;background:var(--accent,#1d4ed8);width:0%;}
 .dot{width:9px;height:9px;border-radius:50%;background:#d1d5db;display:inline-block;margin-right:6px;
@@ -95,24 +106,24 @@ header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; o
 </style>
 """, unsafe_allow_html=True)
 
-# --------------- Auth gate ---------------
+# ---------------- Auth gate ----------------
 if not auth_is_authed():
     st.markdown("#### Welcome")
     st.caption("Sign in to access your dashboard, topics, and quizzes.")
     auth_login_form()
     st.stop()
 
-# --------------- Rail state ---------------
+# ---------------- Rail state ----------------
 if "rail_open" not in st.session_state:
     st.session_state.rail_open = True  # expanded by default
 
 def _toggle_rail():
     st.session_state.rail_open = not st.session_state.rail_open
 
-# --------------- Utilities (unchanged logic) ---------------
 def _safe_pct(numer: int, denom: int) -> int:
     return int(round(100 * numer / denom)) if denom else 0
 
+# ---------------- Topic card renderer (unchanged visuals) ----------------
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
     total_q = int(q_total_map.get(topic, 0))
     attempted = int(progress_map.get(topic, {}).get("total", 0))
@@ -171,7 +182,7 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
-# --------------- Views (your preferred visuals) ---------------
+# ---------------- Views (your preferred visuals kept) ----------------
 def view_dashboard():
     q_count = questions_count_by_topic()
     prog = load_progress()
@@ -340,7 +351,7 @@ def view_quiz():
         denom = len(scored_ids) if scored_ids else len(pool)
         st.success(f"Score: {correct_n}/{denom}")
 
-# --------------- Router ---------------
+# ---------------- Router ----------------
 def render_main():
     view = st.session_state.get("view", "dashboard")
     if view == "topics":
@@ -354,10 +365,9 @@ def render_main():
     else:
         view_dashboard()
 
-# --------------- Layout: robust rail with safe collapsed width ---------------
-# Use a visible minimum width when collapsed so the chevron never disappears.
+# ---------------- Layout: anchored rail + independent main scroll ----------------
 rail_w_expanded = 0.18
-rail_w_collapsed = 0.06   # was too thin before; 0.06 keeps a safe clickable strip
+rail_w_collapsed = 0.06
 rail_w = rail_w_expanded if st.session_state.rail_open else rail_w_collapsed
 main_w = 1.0 - rail_w
 
@@ -370,15 +380,11 @@ with rail_col:
     st.markdown(f"<div class='{rail_cls}'>", unsafe_allow_html=True)
 
     if collapsed:
-        # Show a single chevron-button (“▶”) centered; very obvious.
         if st.button("▶", key="toggle_closed", help="Expand", use_container_width=False):
             _toggle_rail(); st.rerun()
     else:
-        # Top-left collapse chevron (“◀”)
         if st.button("◀", key="toggle_open", help="Collapse", use_container_width=False):
             _toggle_rail(); st.rerun()
-
-        # Brand + navigation
         st.markdown("<div class='edge-rail-title'>PSITE <span style='color:#1d4ed8'>Mastery</span></div>", unsafe_allow_html=True)
         st.markdown("<div class='edge-rail-sub'>Navigate</div>", unsafe_allow_html=True)
 
@@ -410,4 +416,6 @@ with rail_col:
     st.markdown("</div>", unsafe_allow_html=True)  # /.edge-rail-wrap
 
 with main_col:
+    st.markdown("<div class='main-scroll'>", unsafe_allow_html=True)
     render_main()
+    st.markdown("</div>", unsafe_allow_html=True)
