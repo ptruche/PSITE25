@@ -1,14 +1,7 @@
-import traceback, sys
-try:
-    import psite_core
-except Exception:
-    st.write("Import failure:\n", traceback.format_exc())
-    raise
-
-
 # app.py
 import streamlit as st
 import pandas as pd
+import streamlit.components.v1 as components
 
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
@@ -16,82 +9,132 @@ from psite_core import (
     get_category_map, get_topics, resolve_review_path,
     load_questions_for_subjects, load_questions_frame,
     questions_count_by_topic, record_attempt, overall_accuracy,
-    sr_due_ids, sr_update, load_progress,
-    topic_to_slug, get_review_word_count,  # used for readiness badges
+    accuracy_timeseries, topic_strengths, sr_due_ids, sr_update,
+    load_progress, topic_to_slug, slug_to_topic, get_review_word_count,
 )
 
-# =============== App shell / theme ===============
-st.set_page_config(page_title="PSITE Mastery", page_icon=None,
-                   layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="PSITE Mastery",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Base theme (from psite_core) + local page-specific CSS to preserve the exact look/feel
 apply_base_theme()
 ensure_session_keys()
 try_auto_login_persisted()
 
-# Light add-on styles (keeps your theme.css intact)
 st.markdown("""
 <style>
-/* Donut rings for dashboard KPIs */
-.kpi-wrap{display:flex;gap:24px;flex-wrap:wrap;}
-.kpi-card{border:1px solid var(--border,#eef0f3);border-radius:16px;background:#fff;
-  padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;align-items:center;gap:16px;}
-.kpi-ring{width:84px;height:84px;border-radius:50%;
-  background:conic-gradient(var(--accent,#1d4ed8) calc(var(--val,0)*1%), #e9eef8 0);
-  display:grid;place-items:center;}
-.kpi-ring > div{background:#fff;border-radius:50%;width:58px;height:58px;display:grid;place-items:center;
-  font-weight:700;font-size:1rem;color:#111;border:1px solid #f0f3f8;}
-.kpi-meta{display:flex;flex-direction:column;gap:2px;}
-.kpi-label{font-size:.92rem;color:#374151;font-weight:600;}
-.kpi-sub{font-size:.82rem;color:#6b7280}
+/* Keep main content tight like your preferred layout; expands when sidebar collapses */
+.block-container { padding-top: 10px !important; }
 
-/* Meter */
-.meter{flex:1;height:8px;background:#f2f5fb;border-radius:999px;overflow:hidden;}
-.meter>span{display:block;height:100%;background:var(--accent,#1d4ed8);width:0%;}
+/* Section headers */
+.section-title{ font-weight:700; margin:.2rem 0 .6rem 0; }
+.divider{height:1px;background:var(--border);margin:1rem 0;}
 
-/* Inside-card badges */
-.dot{width:9px;height:9px;border-radius:50%;background:#d1d5db;display:inline-block;margin-right:6px;
-  border:1px solid #cbd5e1;transform:translateY(1px);}
-.dot.green{background:#22c55e;border-color:#22c55e;}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:.18rem .5rem;border:1px solid #e5e7eb;
-  border-radius:999px;font-size:.78rem;color:#374151;background:#fff;}
+/* Sidebar brand — always visible and never covered */
+.sb-brand { font-weight:900; font-size:1.15rem; letter-spacing:.2px; margin:.2rem 0 1rem 0; }
+.sb-brand span{ color: var(--accent); }
 
-/* Tighten card typography */
-.topic-title{font-weight:600;font-size:.98rem;line-height:1.2;margin-bottom:.25rem;}
-.topic-row{display:flex;align-items:center;gap:.6rem;margin:.25rem 0 .35rem 0;}
-.topic-meta{font-size:.78rem;color:#6b7280}
+/* Topics grid: exact compact 3-column layout */
+.topics-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
 
-/* Make brand not get covered by sidebar toggle */
-[data-testid="stSidebar"] ~ section.main .app-header {left:0;right:0;}
-.app-header{position:fixed;top:0;left:0;right:0;height:64px;background:#fff;
-  border-bottom:1px solid var(--border,#eef0f3);z-index:1000;display:flex;align-items:center;}
-.app-header-inner{max-width:1200px;margin:0 auto;width:100%;padding:0 12px;
-  display:flex;align-items:center;justify-content:space-between;}
-.app-title{font-weight:800;font-size:1.08rem;}
-header{visibility:hidden;height:0!important;}
-.block-container{padding-top:calc(64px + 12px)!important;}
-.section-title{font-weight:700;margin:.2rem 0 .5rem 0;}
-.divider{height:1px;background:var(--border,#eef0f3);margin:1rem 0;}
+/* Topic cards: single bubble containing title + progress + actions */
+.topic-card{
+  border:1px solid var(--border); border-radius:14px; background:#fff; padding:.75rem;
+  box-shadow:0 1px 4px rgba(0,0,0,.03); display:flex; gap:.55rem; flex-direction:column;
+}
+.topic-title{ font-weight:600; font-size:.98rem; line-height:1.2; }
+.topic-row{ display:flex; align-items:center; gap:.6rem; }
+.meter{ flex:1; height:8px; background:#f2f5fb; border-radius:999px; overflow:hidden; }
+.meter>span{ display:block; height:100%; background:var(--accent); width:0%; }
+
+.topic-actions{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top: .2rem; }
+.btn{ display:inline-flex; align-items:center; gap:.4rem; border:1px solid #dbe2ea; border-radius:999px;
+      padding:.28rem .66rem; background:#fff; cursor:pointer; font-size:.85rem; text-decoration:none; }
+.btn.sm{ font-size:.82rem; padding:.22rem .58rem; }
+.btn.green{ background:#e8f6ef; border-color:#b8e4cc; }
+.topic-meta{ font-size:.8rem; color:#6b7280; margin-left:auto; }
+
+/* Dashboard circles (minimal look: Completed / Correct) */
+.circle-stat{ display:flex; flex-direction:column; align-items:center; gap:.4rem; }
+.circle{
+  --val: 0.0;
+  width:120px; height:120px; border-radius:50%;
+  background:
+    radial-gradient(closest-side, #fff 78%, transparent 80% 100%),
+    conic-gradient(var(--accent) calc(var(--val)*1turn), #eef2f9 0);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:1.15rem; color:#111;
+  border:1px solid var(--border);
+}
+.circle > span{ transform: translateY(-1px); }
+.circle + .label{ font-size:.9rem; color:#374151 }
+
+/* Category chips row at top of Score Topics */
+.cat-row{ display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.6rem; }
+.cat-pill{
+  padding:.26rem .6rem; border:1px solid #dbe2ea; border-radius:999px; background:#fff; font-size:.85rem;
+  cursor:pointer; text-decoration:none; color:#111;
+}
+.cat-pill.active{ background:#e8f0ff; border-color:#c9d7ff; color:#113; font-weight:600; }
+
+/* Question block + verdict */
+.q-prompt { border:1px solid var(--border); background:#fafbfc; border-radius:10px; padding:12px; margin-bottom:6px; }
+.verdict { font-weight:600; padding:.22rem .6rem; border-radius:999px; border:1px solid transparent; display:inline-flex; align-items:center; }
+.verdict-ok  { background:#10b9811a; color:#065f46; border-color:#34d399; }
+.verdict-err { background:#ef44441a; color:#7f1d1d; border-color:#fca5a5; }
 </style>
+<script>
+  // Initialize circle fill (reads data-value attribute)
+  for (const el of window.parent.document.querySelectorAll('.circle')) {
+    const v = parseFloat(el.getAttribute('data-value') || '0');
+    el.style.setProperty('--val', isFinite(v) ? v : 0);
+  }
+</script>
 """, unsafe_allow_html=True)
 
-# ------------------ Header ------------------
-st.markdown("""
-<div class="app-header">
-  <div class="app-header-inner">
-    <div class="app-brand"><div class="app-title">PSITE Mastery</div></div>
-    <div></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ------------------ Auth Gate ------------------
+# =================== Auth Gate ===================
 if not auth_is_authed():
     st.markdown("#### Welcome")
     st.caption("Sign in to access your dashboard, topics, and quizzes.")
     auth_login_form()
     st.stop()
 
-# ------------------ Sidebar ------------------
+# =================== URL Action Router (review/quiz buttons) ===================
+def _consume_action_query():
+    qp = dict(st.query_params)
+    action = qp.get("action")
+    slug = qp.get("topic")
+    if action and slug:
+        topic = slug_to_topic(slug)
+        st.query_params.clear()  # prevent loops
+        if not topic:
+            return
+        if action == "review":
+            st.session_state.active_topic = topic
+            st.session_state.view = "review"
+            st.rerun()
+        elif action == "quiz":
+            df = load_questions_for_subjects([topic])
+            st.session_state.active_topic = topic
+            st.session_state.quiz_pool = df.reset_index(drop=True)
+            st.session_state.quiz_idx = 0
+            st.session_state.quiz_answers = {}
+            st.session_state.quiz_revealed = set()
+            st.session_state.quiz_finished = False
+            st.session_state.quiz_mode = "normal"
+            st.session_state.view = "quiz"
+            st.rerun()
+
+_consume_action_query()
+
+# =================== Sidebar (brand + nav) ===================
 with st.sidebar:
+    st.markdown("""<div class="sb-brand">PSITE <span>Mastery</span></div>""", unsafe_allow_html=True)
+
     st.markdown("### Navigate")
     if st.button("Dashboard", use_container_width=True):
         st.session_state.view = "dashboard"; st.rerun()
@@ -111,67 +154,44 @@ with st.sidebar:
         st.session_state.quiz_mode = "spaced"
         st.session_state.view = "quiz"
         st.rerun()
+
     st.markdown("---")
     auth_logout_button()
 
-# ------------------ Utilities ------------------
-def _safe_pct(numer: int, denom: int) -> int:
-    return int(round(100 * numer / denom)) if denom else 0
-
+# =================== Utilities ===================
 def _render_topic_card(topic: str, q_total_map: dict, progress_map: dict):
-    """Single visual 'box' with title, progress bar, badges, and buttons INSIDE the box."""
+    # Progress + readiness
     total_q = int(q_total_map.get(topic, 0))
     attempted = int(progress_map.get(topic, {}).get("total", 0))
-    pct_done = _safe_pct(attempted, total_q)
-
+    pct_done = int(100 * attempted / total_q) if total_q else 0
     review_words = get_review_word_count(topic)
     has_review = review_words >= 250
     has_quiz   = total_q >= 5
 
-    review_dot_cls = "dot" + (" green" if has_review else "")
-    quiz_dot_cls   = "dot" + (" green" if has_quiz else "")
+    review_cls = "btn sm" + (" green" if has_review else "")
+    quiz_cls   = "btn sm" + (" green" if has_quiz else "")
+    slug = topic_to_slug(topic)
 
-    with st.container(border=True):
-        # Title
-        st.markdown(f"<div class='topic-title'>{topic}</div>", unsafe_allow_html=True)
-        # Progress row
-        prog_cols = st.columns([1, 8, 1])
-        with prog_cols[1]:
-            st.markdown(f"<div class='meter'><span style='width:{pct_done}%;'></span></div>", unsafe_allow_html=True)
-        with prog_cols[2]:
-            st.markdown(f"<div style='text-align:right;font-size:.82rem;'>{pct_done}%</div>", unsafe_allow_html=True)
-        # Badges line (inside box)
-        st.markdown(
-            f"<div style='display:flex;align-items:center;gap:.5rem;margin:.35rem 0;'>"
-            f"<span class='badge'><span class='{review_dot_cls}'></span>Review</span>"
-            f"<span class='badge'><span class='{quiz_dot_cls}'></span>Quiz</span>"
-            f"<span class='topic-meta'>Q: {attempted}/{total_q}</span>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-        # Buttons (still inside box)
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("Review", key=f"rev_{topic}", use_container_width=True):
-                st.session_state.active_topic = topic
-                st.session_state.view = "review"
-                st.rerun()
-        with b2:
-            if st.button("Quiz", key=f"quiz_{topic}", use_container_width=True):
-                df = load_questions_for_subjects([topic])
-                st.session_state.active_topic = topic
-                st.session_state.quiz_pool = df.reset_index(drop=True)
-                st.session_state.quiz_idx = 0
-                st.session_state.quiz_answers = {}
-                st.session_state.quiz_revealed = set()
-                st.session_state.quiz_finished = False
-                st.session_state.quiz_mode = "normal"
-                st.session_state.view = "quiz"
-                st.rerun()
+    # Single bubble (title + bar + actions inside)
+    st.markdown(f"""
+    <div class="topic-card">
+      <div class="topic-title">{topic}</div>
+      <div class="topic-row">
+        <div class="meter"><span style="width:{pct_done}%"></span></div>
+        <div style="width:42px;text-align:right;font-size:.82rem;">{pct_done}%</div>
+      </div>
+      <div class="topic-actions">
+        <a class="{review_cls}" href="?action=review&topic={slug}">Review</a>
+        <a class="{quiz_cls}" href="?action=quiz&topic={slug}">Quiz</a>
+        <span class="topic-meta">Q: {attempted}/{total_q}{' • Review ready' if has_review else ''}</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def _start_quiz_from_topics(selected_topics: list, n: int):
     df = load_questions_for_subjects(selected_topics)
-    df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
+    if not df.empty:
+        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True)
     st.session_state.quiz_pool = df
     st.session_state.quiz_idx = 0
     st.session_state.quiz_answers = {}
@@ -181,59 +201,97 @@ def _start_quiz_from_topics(selected_topics: list, n: int):
     st.session_state.view = "quiz"
     st.rerun()
 
-# ------------------ Views ------------------
+# =================== Views ===================
 def view_dashboard():
-    q_count = questions_count_by_topic()
-    prog = load_progress()
-    total_q_all = sum(int(q_count.get(t, 0)) for t in q_count.keys())
-    attempted_all = sum(int(prog.get(t, {}).get("total", 0)) for t in q_count.keys())
-    pct_done = _safe_pct(attempted_all, total_q_all)
-    pct_correct = int(round(overall_accuracy() * 100))
-
     st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
+
+    # Accuracy 0..1
+    acc = overall_accuracy()
+
+    # Completion = attempted / total available
+    q_count = questions_count_by_topic()
+    total_available = sum(q_count.values())
+    prog = load_progress()
+    total_attempted = sum(v.get("total", 0) for v in prog.values())
+    completion = (total_attempted / total_available) if total_available else 0.0
+
+    # Daily avg from last 30 days
+    series = accuracy_timeseries(days=30)
+    attempts_last_30 = sum(n for _, _, n in series) if series else 0
+    daily_avg = attempts_last_30 / 30 if attempts_last_30 else 0
+
+    c1, c2, c3 = st.columns([1,1,1])
     with c1:
         st.markdown(f"""
-        <div class="kpi-card">
-          <div class="kpi-ring" style="--val:{pct_done};">
-            <div>{pct_done}%</div>
-          </div>
-          <div class="kpi-meta">
-            <div class="kpi-label">Completed</div>
-            <div class="kpi-sub">{attempted_all} of {total_q_all} questions attempted</div>
-          </div>
+        <div class="circle-stat">
+          <div class="circle" data-value="{completion:.2f}"><span>{int(round(completion*100))}%</span></div>
+          <div class="label">Completed</div>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
-        <div class="kpi-card">
-          <div class="kpi-ring" style="--val:{pct_correct};">
-            <div>{pct_correct}%</div>
-          </div>
-          <div class="kpi-meta">
-            <div class="kpi-label">Accuracy</div>
-            <div class="kpi-sub">Across all attempted questions</div>
-          </div>
+        <div class="circle-stat">
+          <div class="circle" data-value="{acc:.2f}"><span>{int(round(acc*100))}%</span></div>
+          <div class="label">Correct</div>
         </div>
         """, unsafe_allow_html=True)
+    with c3:
+        st.metric("Avg questions/day (30d)", f"{daily_avg:.1f}")
+
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+
+    strong, weak = topic_strengths(k=5)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Strongest topics**")
+        if not strong: st.caption("—")
+        for t, a, n in strong:
+            st.write(f"{t} — {int(a*100)}% ({n} q)")
+    with c2:
+        st.markdown("**Weakest topics**")
+        if not weak: st.caption("—")
+        for t, a, n in weak:
+            st.write(f"{t} — {int(a*100)}% ({n} q)")
 
 def view_topics():
     st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
+
     cats = get_category_map()
     q_count = questions_count_by_topic()
     prog = load_progress()
 
-    # Top header: category selector & search
-    s1, s2 = st.columns([2,1])
-    with s1:
-        q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
-    with s2:
-        cat_names = ["All"] + list(cats.keys())
-        choose = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
+    # Category chips at top
+    cat_names = ["All"] + list(cats.keys())
+    current_cat = st.session_state.get("cat_filter", "All")
 
+    st.markdown("<div class='cat-row'>", unsafe_allow_html=True)
+    for i, name in enumerate(cat_names):
+        active = (name == current_cat)
+        st.markdown(
+            f"<a class='cat-pill{' active' if active else ''}' href='?cat={i}'>{name}</a>",
+            unsafe_allow_html=True
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Read selection from query and clear
+    qp = dict(st.query_params)
+    if "cat" in qp:
+        try:
+            idx = int(qp["cat"])
+            if 0 <= idx < len(cat_names):
+                current_cat = cat_names[idx]
+                st.session_state["cat_filter"] = current_cat
+        except Exception:
+            pass
+        st.query_params.clear()
+
+    # Search
+    q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
+
+    # Assemble filtered list
     topics = []
     for cat, arr in cats.items():
-        if choose != "All" and cat != choose:
+        if current_cat != "All" and cat != current_cat:
             continue
         for t in arr:
             if q and q not in t.lower():
@@ -244,10 +302,11 @@ def view_topics():
         st.info("No topics match your filter.")
         return
 
-    cols = st.columns(3)
-    for i, t in enumerate(topics):
-        with cols[i % 3]:
-            _render_topic_card(t, q_count, prog)
+    # Render exact 3-col card grid
+    st.markdown("<div class='topics-grid'>", unsafe_allow_html=True)
+    for t in topics:
+        _render_topic_card(t, q_count, prog)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def view_review():
     topic = st.session_state.get("active_topic") or ""
@@ -264,16 +323,7 @@ def view_review():
     st.markdown(txt, unsafe_allow_html=True)
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    if st.button("Quiz this topic ▶", use_container_width=True):
-        df = load_questions_for_subjects([topic])
-        st.session_state.quiz_pool = df.reset_index(drop=True)
-        st.session_state.quiz_idx = 0
-        st.session_state.quiz_answers = {}
-        st.session_state.quiz_revealed = set()
-        st.session_state.quiz_finished = False
-        st.session_state.quiz_mode = "normal"
-        st.session_state.view = "quiz"
-        st.rerun()
+    st.markdown(f"<a class='btn sm' href='?action=quiz&topic={topic_to_slug(topic)}'>Quiz this topic ▶</a>", unsafe_allow_html=True)
 
 def view_make_quiz():
     st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
@@ -304,12 +354,14 @@ def view_quiz():
     st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
     letters = ["A","B","C","D","E"]
-    prev_choice = st.session_state.quiz_answers.get(row["id"])
-    default_idx = letters.index(prev_choice) if prev_choice in letters else 0
+    default_idx = None
+    if row["id"] in st.session_state.quiz_answers:
+        try:
+            default_idx = letters.index(st.session_state.quiz_answers[row["id"]])
+        except Exception:
+            default_idx = None
     choice = st.radio(
-        "",
-        letters,
-        index=default_idx,
+        "", letters, index=default_idx,
         format_func=lambda L: row[L],
         label_visibility="collapsed",
         key=f"q_{row['id']}"
@@ -335,8 +387,9 @@ def view_quiz():
         verdict_class = "verdict-ok" if is_correct else "verdict-err"
         verdict_text = "Correct" if is_correct else "Incorrect"
         st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
-        if str(row.get("explanation","")).strip():
+        if str(row["explanation"]).strip():
             st.markdown(row["explanation"], unsafe_allow_html=True)
+        # Log attempt once
         key = f"scored_{row['id']}"
         if not st.session_state.get(key, False):
             record_attempt(row.get("subject",""), row["id"], is_correct)
@@ -345,13 +398,20 @@ def view_quiz():
             st.session_state[key] = True
 
     if st.session_state.quiz_finished:
-        idxed = pool.set_index("id")
-        scored_ids = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
-        correct_n = sum(1 for qid in scored_ids if idxed.loc[qid]["correct"] == st.session_state.quiz_answers[qid])
-        denom = len(scored_ids) if scored_ids else len(pool)
-        st.success(f"Score: {correct_n}/{denom}")
+        correct_n = 0
+        revealed_n = 0
+        idx = pool.set_index("id")
+        for qid, ans in st.session_state.quiz_answers.items():
+            if qid in st.session_state.quiz_revealed:
+                revealed_n += 1
+                try:
+                    if idx.loc[qid]["correct"] == ans:
+                        correct_n += 1
+                except Exception:
+                    pass
+        st.success(f"Score: {correct_n}/{revealed_n if revealed_n else len(pool)}")
 
-# ------------------ Router ------------------
+# =================== Router ===================
 view = st.session_state.get("view", "dashboard")
 if view == "topics":
     view_topics()
