@@ -215,7 +215,7 @@ def auth_login_form():
                 if not rec or not _verify_pw(p, rec["salt"], rec["hash"]):
                     st.error("Invalid username or password.")
                 else:
-                    persist_login(u, remember_days=(7 if remember else 1))
+                    persist_login(u, remember_days=(365 if remember else 1))  # Extended to 1 year for "remember me"
                     st.rerun()
     with tab2:
         with st.form("create_form"):
