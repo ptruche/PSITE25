@@ -331,7 +331,7 @@ def slug_to_topic(s): return SLUG_TO_TOPIC.get(s)
 # ------------------------------------------------------------------ #
 FRONT_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.M)
 EXPL_RE  = re.compile(r"<!--\s*EXPLANATION\s*-->", re.I)
-REQUIRED_COLS  = ["id","subject","A","B","C","D","E","correct","stem","explanation"]
+REQUIRED_COLS  = ["id","subject","stem","A","B","C","D","E","correct","explanation"]
 
 def _parse_md(path: str) -> Optional[dict]:
     try:
