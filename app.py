@@ -90,9 +90,9 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 .divider {height:1px; background:var(--border); margin:1rem 0;}
 .dot {width:9px; height:9px; border-radius:50%; background:#d1d5db; display:inline-block; margin-right:6px; border:1px solid #cbd5e1; transform:translateY(1px);}
 .dot.green {background:#22c55e; border-color:#22c55e;}
-.q-nav {background:var(--sidebar-bg); padding:1rem; border-left:1px solid var(--border); box-shadow:var(--shadow); position:sticky; top:56px; height:calc(100vh - 56px); overflow-y:auto;}
+.q-nav {background:var(--sidebar-bg); padding:1rem; border-left:1px solid var(--border); box-shadow:var(--shadow); position:sticky; top:56px; height:calc(100vh - 56px); overflow-y:auto; display:flex; flex-direction:column; align-items:center;}
 .q-nav-title {font-size:1rem; font-weight:600; margin-bottom:1rem;}
-.q-nav-btn {width:40px; height:40px; border-radius:50%; background:#e5e7eb; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:500; color:var(--text); transition:all 0.2s; margin-bottom:0.5rem;}
+.q-nav-btn {width:35px; height:35px; border-radius:50%; background:#e5e7eb; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:500; color:var(--text); transition:all 0.2s; margin-bottom:0.5rem;}
 .q-nav-btn.unanswered {background:#e5e7eb;}
 .q-nav-btn.correct {background:#22c55e; color:white;}
 .q-nav-btn.incorrect {background:#ef4444; color:white;}
@@ -365,7 +365,7 @@ elif view == "quiz":
         history = load_history()
 
         # Question navigator on right
-        left, right = st.columns([4,1])
+        left, right = st.columns([9,1])
         with right:
             st.markdown("<div class='q-nav'>", unsafe_allow_html=True)
             st.markdown("<div class='q-nav-title'>Questions</div>", unsafe_allow_html=True)
@@ -377,7 +377,10 @@ elif view == "quiz":
                     btn_class += " correct" if status else " incorrect"
                 else:
                     btn_class += " unanswered"
-                if st.button(str(j+1), key=f"nav_q_{j}", use_container_width=True):
+                label = str(j+1)
+                if status is not None:
+                    label = "✅ " + label if status else "❌ " + label
+                if st.button(label, key=f"nav_q_{j}", use_container_width=True):
                     st.session_state.quiz_idx = j
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
