@@ -314,6 +314,211 @@ CATEGORY_TO_TOPICS = {
 }
 ALL_TOPICS = [t for cat in CATEGORY_TO_TOPICS.values() for t in cat]
 
+def get_topics() -> List[str]: return ALL_TOPICS
+def get_category_map() -> dict: return CATEGORY_TO_TOPICS
+
+def slugify(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()[:120]
+
+TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
+SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
+
+def topic_to_slug(t): return TOPIC_TO_SLUG.get(t, slugify(t))
+def slug_to_topic(s): return SLUG_TO_TOPIC.get(s)
+
+# ------------------------------------------------------------------ #
+# QUESTION LOADING (no UI, pure pandas)
+# ------------------------------------------------------------------ #
+FRONT_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.M)
+EXPL_RE  = re.compile(r"<!--\s*EXPLANATION\s*-->", re.I)
+
+def _parse_md(path: str) -> Optional[dict]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read()
+        m = FRONT_RE.match(raw)
+        if not m:
+            return None
+        fm, body = m.group(1), m.group(2)
+        meta = {k.strip(): v.strip() for ln in fm.splitlines() if ":" in ln for k, v in [ln.split(":", 1)]}
+        stem, expl = EXPL_RE.split(body, 1) if EXPL_RE.search(body) else (body.strip(), "")
+        subject = meta.get("subject") or slug_to_topic(os.path.basename(os.path.dirname(path)))
+        if not subject or subject not in ALL_TOPICS:
+            return None
+        return {
+            "id": meta.get("id", "").strip(),
+            "subject": subject,
+            "stem": stem.strip(),
+            "explanation": expl.strip(),
+            "A": meta.get("A", "").strip(),
+            "B": meta.get("B", "").strip(),
+            "C": meta.get("C", "").strip(),
+            "D": meta.get("D", "").strip(),
+            "E": meta.get("E", "").strip(),
+            "correct": meta.get("correct", "").strip().upper(),
+        }
+    except Exception:
+        return None
+
+def load_questions_frame() -> pd.DataFrame:
+    rows = [r for p in glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True) if (r := _parse_md(p))]
+    if not rows:
+        return pd.DataFrame(columns=["id","subject","stem","A","B","C","D","E","correct","explanation"])
+    df = pd.DataFrame(rows)
+    df = df[df["id"] != ""].drop_duplicates(subset="id").reset_index(drop=True)
+    return df
+
+# ------------------------------------------------------------------ #
+# REVIEW HELPERS
+# ------------------------------------------------------------------ #
+def resolve_review_path(topic: str) -> Optional[str]:
+    slug = topic_to_slug(topic)
+    for cand in [f"{slug}.md", f"{topic}.md"]:
+        p = os.path.join(REVIEWS_DIR, cand)
+        if os.path.exists(p):
+            return p
+    return None
+
+def get_review_word_count(topic: str) -> int:
+    p = resolve_review_path(topic)
+    if not p:
+        return 0
+    txt = open(p, "r", encoding="utf-8").read()
+    txt = re.sub(r"```[\s\S]*?```", " ", txt)
+    txt = re.sub(r"<[^>]+>", " ", txt)
+    return len(re.findall(r"[A-Za-z0-9’']+", txt))
+
+def questions_count_by_topic() -> Dict[str, int]:
+    df = load_questions_frame()
+    if df.empty: return {t:0 for t in get_topics()}
+    counts = df.groupby("subject")["id"].nunique().to_dict()
+    for t in get_topics():
+        counts.setdefault(t, 0)
+    return counts
+
+# ------------------------------------------------------------------ #
+# USER STATE / ANALYTICS
+# ------------------------------------------------------------------ #
+def _read_json(path, default):
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return default
+    return default
+
+def _write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _user_file(key: str) -> str:
+    u = st.session_state.get("auth_user")
+    if not u: raise RuntimeError("Not authenticated.")
+    base = os.path.join(STATE_DIR, "users", re.sub(r"[^A-Za-z0-9_.-]+", "_", u))
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, f"{key}.json")
+
+def load_progress() -> Dict[str, dict]:
+    data = _read_json(_user_file("progress"), {})
+    for t in get_topics():
+        data.setdefault(t, {"total":0,"correct":0,"last_seen":None})
+    return data
+
+def save_progress(d): _write_json(_user_file("progress"), d)
+
+def load_history() -> List[Dict]:
+    return _read_json(_user_file("history"), [])
+
+def save_history(arr: List[Dict]):
+    _write_json(_user_file("history"), arr)
+
+def record_attempt(topic: str, qid: str, correct: bool):
+    hist = load_history()
+    hist.append({"ts": int(time.time()), "topic": topic, "id": qid, "correct": bool(correct)})
+    save_history(hist)
+    prog = load_progress()
+    rec = prog.get(topic, {"total":0,"correct":0,"last_seen":None})
+    rec["total"] += 1
+    if correct: rec["correct"] += 1
+    rec["last_seen"] = int(time.time())
+    save_progress(prog)
+
+def overall_accuracy() -> float:
+    prog = load_progress()
+    tot = sum(v.get("total",0) for v in prog.values())
+    cor = sum(v.get("correct",0) for v in prog.values())
+    return (cor / tot) if tot else 0.0
+
+# ------------------------------------------------------------------ #
+# SPACED REPETITION (SM-2 lite)
+# ------------------------------------------------------------------ #
+def _now_day_ts() -> int:
+    today = dt.date.today()
+    return int(time.mktime(dt.datetime(today.year,today.month,today.day).timetuple()))
+
+def load_sr() -> Dict[str, Dict]:
+    return _read_json(_user_file("sr"), {})
+
+def save_sr(srobj: Dict[str, Dict]):
+    _write_json(_user_file("sr"), srobj)
+
+def sr_due_ids(limit:int=20, subjects: Optional[List[str]]=None) -> List[str]:
+    df = load_questions_frame()
+    if df.empty: return []
+    sr = load_sr(); today = _now_day_ts(); ids=[]
+    for _, r in df.iterrows():
+        qid = r["id"]; d = sr.get(qid); due_ts = d["due_ts"] if d else today
+        if due_ts <= today: ids.append(qid)
+    if not ids:
+        upcoming = sorted(((q, sr.get(q, {"due_ts":today})["due_ts"]) for q in df["id"].tolist()), key=lambda x:x[1])
+        ids = [q for q,_ in upcoming[:limit]]
+    return ids[:limit]
+
+def sr_update(qid:str, was_correct:bool):
+    sr = load_sr()
+    if qid not in sr:
+        sr[qid] = {"reps": 0, "interval": 0.0, "ease": 2.5, "due_ts": _now_day_ts(), "last_result": None}
+    rec = sr[qid]
+    quality = 4 if was_correct else 2
+    ease = rec.get("ease",2.5); reps = rec.get("reps",0); interval = rec.get("interval",0.0)
+    if was_correct:
+        if reps==0: interval=1
+        elif reps==1: interval=6
+        else: interval=round(interval*ease)
+        reps += 1
+        ease = max(1.3, ease + 0.1 - (5-quality)*(0.08 + (5-quality)*0.02))
+    else:
+        reps = 0; interval = 1; ease = max(1.3, ease - 0.2)
+    due_date = dt.date.today() + dt.timedelta(days=int(interval))
+    due_ts = int(time.mktime(dt.datetime(due_date.year,due_date.month,due_date.day).timetuple()))
+    rec.update({"reps":reps,"interval":float(interval),"ease":float(ease),"due_ts":due_ts,"last_result":int(was_correct)})
+    sr[qid]=rec
+    save_sr(sr)
+
+# ------------------------------------------------------------------ #
+# SESSION DEFAULTS
+# ------------------------------------------------------------------ #
+def ensure_session_keys():
+    defaults = {
+        "auth_user": None,
+        "view": "dashboard",
+        "active_topic": None,
+        "quiz_mode": "normal",
+        "quiz_pool": None,
+        "quiz_idx": 0,
+        "quiz_answers": {},
+        "quiz_revealed": set(),
+        "quiz_finished": False,
+        "rail_open": True,
+    }
+    for k, v in defaults.items():
+        st.session_state.setdefault(k, v)
+
+# ------------------------------------------------------------------ #
+# ORDERED TOPICS FOR LEARNING PATH (optimal order)
+# ------------------------------------------------------------------ #
 ORDERED_TOPICS = [
     # Category 1
     "Prenatal Anomalies and Therapy",
@@ -447,6 +652,161 @@ ORDERED_TOPICS = [
     "Splenic Diseases",
     "Chemo/Radiation Therapy, Immunotherapy Concepts, Genetics",
 ]
+
+# ------------------------------------------------------------------ #
+# 8. LAYOUT – fixed header + sidebar
+# ------------------------------------------------------------------ #
+st.markdown(
+    "<div class='app-header'>"
+    "<div class='logo'>PSITE <span>Mastery</span></div>"
+    "<div></div>"   # placeholder for future icons
+    "</div>",
+    unsafe_allow_html=True,
+)
+
+# Sidebar navigation
+nav = {
+    "Dashboard": "dashboard",
+    "Score Topics": "topics",
+    "Make Quiz": "make_quiz",
+    "Learning Path": "learning_path",
+}
+for label, view in nav.items():
+    if st.sidebar.button(label, key=f"nav_{view}", use_container_width=True):
+        st.session_state.view = view
+        st.rerun()
+
+st.sidebar.markdown("<div class='sidebar-sep'></div>", unsafe_allow_html=True)
+
+if st.sidebar.button("Spaced Repetition", key="nav_sr", use_container_width=True):
+    ids = sr_due_ids(limit=50)
+    pool = ALL_Q[ALL_Q["id"].isin(ids)].reset_index(drop=True) if not ALL_Q.empty else ALL_Q
+    _start_quiz(pool, mode="spaced")
+
+st.sidebar.markdown("<div class='sidebar-sep'></div>", unsafe_allow_html=True)
+if st.sidebar.button("Logout", type="secondary", use_container_width=True):
+    clear_persisted_login()
+    st.rerun()
+
+# ---------- MAIN ----------
+st.markdown("<div class='main'>", unsafe_allow_html=True)
+
+# ------------------------------------------------------------------ #
+# 9. VIEW ROUTER
+# ------------------------------------------------------------------ #
+view = st.session_state.get("view", "dashboard")
+
+# ---------- DASHBOARD ----------
+if view == "dashboard":
+    st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
+    attempted_all = sum(v.get("total", 0) for v in PROGRESS.values())
+    total_all = sum(Q_COUNT.get(t, 0) for t in Q_COUNT)
+    pct_done = _pct(attempted_all, total_all)
+    pct_acc  = int(round(overall_accuracy() * 100))
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+              <div class="kpi-ring" style="--val:{pct_done};"><div>{pct_done}%</div></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="font-weight:600;font-size:.95rem;">Completed</div>
+                <div style="font-size:.82rem;color:#6b7280">{attempted_all} of {total_all}</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+              <div class="kpi-ring" style="--val:{pct_acc};"><div>{pct_acc}%</div></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="font-weight:600;font-size:.95rem;">Accuracy</div>
+                <div style="font-size:.82rem;color:#6b7280">All attempts</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+# ---------- TOPICS ----------
+elif view == "topics":
+    st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
+
+    cats = get_category_map()
+    s1, s2 = st.columns([2, 1])
+    with s1:
+        q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
+    with s2:
+        cat_names = ["All"] + list(cats.keys())
+        chosen_cat = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
+
+    topics = []
+    for cat, arr in cats.items():
+        if chosen_cat != "All" and cat != chosen_cat:
+            continue
+        for t in arr:
+            if q and q not in t.lower():
+                continue
+            topics.append(t)
+
+    if not topics:
+        st.info("No topics match your filter.")
+    else:
+        cols = st.columns(3)
+        for i, t in enumerate(topics):
+            with cols[i % 3]:
+                _render_topic_card(t)
+
+# ---------- REVIEW ----------
+elif view == "review":
+    topic = st.session_state.get("active_topic")
+    if not topic:
+        st.info("Choose a topic from Score Topics.")
+    else:
+        st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
+        p = resolve_review_path(topic)
+        if not p:
+            st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named with the topic slug.")
+        else:
+            with open(p, "r", encoding="utf-8") as f:
+                txt = f.read()
+            st.markdown(txt, unsafe_allow_html=True)
+
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+        if st.button("Quiz this topic ▶", use_container_width=True):
+            df = load_questions_for_subjects([topic])
+            st.session_state.quiz_pool = df.reset_index(drop=True)
+            st.session_state.quiz_idx = 0
+            st.session_state.quiz_answers = {}
+            st.session_state.quiz_revealed = set()
+            st.session_state.quiz_finished = False
+            st.session_state.quiz_mode = "normal"
+            st.session_state.view = "quiz"
+            st.rerun()
+
+# ---------- MAKE QUIZ ----------
+elif view == "make_quiz":
+    st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
+    topics = ["Any"] + get_topics()
+    pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
+    n = st.number_input("Number of questions", 5, 100, 20, step=5)
+    if st.button("Start ▶", use_container_width=True):
+        if pick and "Any" in pick:
+            pick = []
+        df = load_questions_for_subjects(pick)
+        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
+        st.session_state.quiz_pool = df
+        st.session_state.quiz_idx = 0
+        st.session_state.quiz_answers = {}
+        st.session_state.quiz_revealed = set()
+        st.session_state.quiz_finished = False
+        st.session_state.quiz_mode = "normal"
+        st.session_state.view = "quiz"
+        st.rerun()
 
 # ---------- LEARNING PATH ----------
 elif view == "learning_path":
