@@ -332,41 +332,67 @@ def slug_to_topic(s): return SLUG_TO_TOPIC.get(s)
 FRONT_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.M)
 EXPL_RE  = re.compile(r"<!--\s*EXPLANATION\s*-->", re.I)
 
+def _infer_subject_from_path(path: str) -> Optional[str]:
+    parent = os.path.basename(os.path.dirname(path)).lower()
+    return SLUG_TO_TOPIC.get(parent)
+
+def normalize_subject(meta_subject: str, path: str) -> Optional[str]:
+    topics = set(get_topics())
+    if meta_subject and meta_subject in topics:
+        return meta_subject
+    if meta_subject:
+        s = slugify(meta_subject)
+        if s in SLUG_TO_TOPIC:
+            return SLUG_TO_TOPIC[s]
+    return _infer_subject_from_path(path)
+
 def _parse_md(path: str) -> Optional[dict]:
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            raw = f.read()
+        with open(path, "r", encoding="utf-8") as h:
+            raw = h.read()
         m = FRONT_RE.match(raw)
-        if not m:
-            return None
+        if not m: return None
         fm, body = m.group(1), m.group(2)
-        meta = {k.strip(): v.strip() for ln in fm.splitlines() if ":" in ln for k, v in [ln.split(":", 1)]}
-        stem, expl = EXPL_RE.split(body, 1) if EXPL_RE.search(body) else (body.strip(), "")
-        subject = meta.get("subject") or slug_to_topic(os.path.basename(os.path.dirname(path)))
-        if not subject or subject not in ALL_TOPICS:
+        meta = {}
+        for ln in fm.splitlines():
+            if ":" in ln:
+                k, v = ln.split(":", 1)
+                meta[k.strip()] = v.strip()
+
+        subject = normalize_subject((meta.get("subject","") or "").strip(), path)
+        if not subject:  # skip if still unknown
             return None
-        return {
-            "id": meta.get("id", "").strip(),
+
+        stem, explanation = EXPL_SPLIT_RE.split(body, maxsplit=1) if EXPL_SPLIT_RE in body else (body.strip(), "")
+
+        rec = {
+            "id": meta.get("id","").strip(),
             "subject": subject,
-            "stem": stem.strip(),
-            "explanation": expl.strip(),
-            "A": meta.get("A", "").strip(),
-            "B": meta.get("B", "").strip(),
-            "C": meta.get("C", "").strip(),
-            "D": meta.get("D", "").strip(),
-            "E": meta.get("E", "").strip(),
-            "correct": meta.get("correct", "").strip().upper(),
+            "A": meta.get("A","").strip(),
+            "B": meta.get("B","").strip(),
+            "C": meta.get("C","").strip(),
+            "D": meta.get("D","").strip(),
+            "E": meta.get("E","").strip(),
+            "correct": meta.get("correct","").strip().upper(),
+            "stem": stem, "explanation": explanation,
         }
+        if rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]:
+            return rec
     except Exception:
         return None
 
 def load_questions_frame() -> pd.DataFrame:
-    rows = [r for p in glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True) if (r := _parse_md(p))]
+    files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True))
+    rows = [rec for f in files if (rec := _parse_md(f))]
     if not rows:
-        return pd.DataFrame(columns=["id","subject","stem","A","B","C","D","E","correct","explanation"])
+        return pd.DataFrame(columns=REQUIRED_COLS)
     df = pd.DataFrame(rows)
-    df = df[df["id"] != ""].drop_duplicates(subset="id").reset_index(drop=True)
-    return df
+    for c in REQUIRED_COLS:
+        if c not in df.columns: df[c] = ""
+        df[c] = df[c].astype(str).str.strip()
+    df["correct"] = df["correct"].str.upper()
+    df = df[df["subject"].isin(get_topics())].copy()
+    return df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
 
 # ------------------------------------------------------------------ #
 # REVIEW HELPERS
@@ -515,379 +541,3 @@ def ensure_session_keys():
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
-
-# ------------------------------------------------------------------ #
-# ORDERED TOPICS FOR LEARNING PATH (optimal order)
-# ------------------------------------------------------------------ #
-ORDERED_TOPICS = [
-    # Category 1
-    "Prenatal Anomalies and Therapy",
-    "Congenital Diaphragmatic Hernia",
-    "Pulmonary Hypoplasia/Hypertension",
-    "Cystic Pulmonary Airway Malformation",
-    "Lobar Emphysema",
-    "Pulmonary Sequestration",
-    "Cystic Diseases of the Lung",
-    "Lung Physiology, Pathophysiology, Ventilators, Pneumonia",
-    "Pulmonary Abscess",
-    "Empyema",
-    "Pneumothorax",
-    "Chylothorax",
-    "Esophageal Atresia and Tracheoesophageal Fistula",
-    "Tracheobronchial Foreign Bodies",
-    "Tracheomalacia",
-    "Laryngomalacia",
-    "Vascular Ring and Pulmonary Artery Sling",
-    "Esophageal Stricture: Caustic Ingestion and Other Causes",
-    "Esophageal Stenosis, Webs, Diverticuli",
-    "Gastroesophageal Reflux/Barrett's Esophagus",
-    "Esophageal Perforation",
-    "Esophageal Replacement",
-    "Esophagoscopy",
-    "Bronchoscopy",
-    "Eventration of the Diaphragm",
-    "Patent Ductus Arteriosus",
-    "Subacute Bacterial Endocarditis Prophylaxis",
-    "Cystic Fibrosis",
-    "Mediastinal Cysts, Masses",
-    "Chest Wall Deformities: Pectus Excavatum/Carinatum, Marfan’s and Poland’s Syndromes",
-
-    # Category 2
-    "Neonatal Physiology and Pathophysiology: Transition from Fetal Circulation, Cardiovascular Monitoring, Shock",
-    "Neonatal Obstruction",
-    "Neonatal Gastric Perforation",
-    "Meconium Ileus/Peritonitis/Plug",
-    "Necrotizing Enterocolitis",
-    "Hypertrophic Pyloric Stenosis",
-    "Duodenal Atresia/Stenosis/Webs/Annular Pancreas",
-    "Intestinal Atresia",
-    "Malrotation",
-    "Gastric Volvulus",
-    "Alimentary Tract Duplications",
-    "Mesenteric and Omental Cysts",
-    "Hirschsprung Disease",
-    "Intussusception",
-    "Appendicitis",
-    "Inflammatory Bowel Disease",
-    "Polyps",
-    "Gastrointestinal Bleeding",
-    "Peptic Ulcer Disease",
-    "Biliary Atresia",
-    "Choledochal Cysts",
-    "Gallbladder Disease, Gallstones",
-    "Portal Hypertension",
-    "Hepatic Infections: Hepatitis, Abscess, Cysts",
-    "Abdominal Pain",
-    "Ascites: Chylous",
-    "Gastroschisis",
-    "Omphalocele",
-    "Cloacal Exstrophy/Bladder Exstrophy",
-    "Umbilical Hernia and Other Umbilical Disorders",
-    "Omphalomesenteric Duct Remnants, Urachus, and Meckel's",
-    "Inguinal Hernia",
-
-    # Category 3
-    "Branchial Cleft, Arch Anomalies",
-    "Thyroglossal Duct Cyst/Sinus",
-    "Torticollis",
-    "Lymphadenopathy, Atypical Mycobacteria",
-    "Endocrine Diseases",
-    "Thyroid Nodules",
-    "Adrenal Cortical Tumors, Pheochromocytoma",
-    "Breast Disorders",
-    "Vascular Anomalies",
-    "Arterial Diseases and Vasculitis",
-    "Disorders of Sexual Development",
-    "Vaginal Atresia, Hydrometrocolpos",
-    "Ovarian Torsion, Cysts, and Tumors",
-    "Circumcision and Abnormalities of the Urethra, Penis, Scrotum",
-    "Undescended Testicle (Cryptorchidism)",
-    "Torsions: Appendix Testes, Testicular",
-    "Renal Diseases: Nephrotic Syndrome, DI, Renal Vein Thrombosis, Chronic Failure, Prune Belly Syndrome",
-    "Anorectal Malformation",
-    "Anal Pathology: Fissures, Abscesses, Fistulae, Pilonidal, Prolapse",
-    "Neurological: Shunt Complications, Dermal Sinuses",
-
-    # Category 4
-    "Trauma: Initial Assessment and Resuscitation",
-    "Nonaccidental Injuries: Diagnosis, Evaluation, Legal Issues",
-    "Thoracic Trauma",
-    "Abdominal Trauma",
-    "Cardiovascular Trauma: Tamponade, Contusion, Arch Disruption, Peripheral Vascular Injuries",
-    "Musculoskeletal Trauma: Pelvis, Long Bone",
-    "Neurosurgical Trauma",
-    "Soft Tissue Trauma: Tetanus, Bites, Wound Infection, Crush Injuries",
-    "Burns: Resuscitation, Airway, Electrical, Nutrition, Wound, Sepsis",
-    "ARDS",
-    "Acute Renal Failure",
-    "Fluids and Electrolytes",
-    "Nutrition",
-    "Obesity",
-    "Short Bowel Syndrome/Intestinal Failure",
-    "Coagulation",
-    "Hematologic Diseases: Spherocytosis, Sickle Cell, ITP, HSP",
-    "Pediatric Anesthesia and Pain Management",
-    "Extracorporeal Life Support",
-    "Transplantation",
-
-    # Category 5
-    "Vascular Anomalies",
-    "Nevi, Melanoma",
-    "Dermoid/Epidermoid Cysts, Soft Tissue Nodules",
-    "Lymphoma/Leukemia",
-    "Neuroblastoma",
-    "Wilms Tumor, Renal Cell Carcinoma, and Hemihypertrophy",
-    "Mesoblastic Nephroma",
-    "Testicular Tumors",
-    "Ovarian and Adnexal Problems",
-    "Rhabdomyosarcoma",
-    "Bone Tumors: Osteogenic Sarcoma, Ewing Sarcoma",
-    "Gastrointestinal Tumors",
-    "Abdominal Mass in the Newborn",
-    "Benign Liver Tumors: Hepatic Mesenchymal Hamartoma/Adenoma/FNH",
-    "Malignant Liver Tumors: Hepatoblastoma/Hepatocellular Carcinoma",
-    "Adrenal Cancer",
-    "Lung and Chest Wall Tumors",
-    "Teratoma",
-    "Splenic Diseases",
-    "Chemo/Radiation Therapy, Immunotherapy Concepts, Genetics",
-]
-
-# ------------------------------------------------------------------ #
-# 8. LAYOUT – fixed header + sidebar
-# ------------------------------------------------------------------ #
-st.markdown(
-    "<div class='app-header'>"
-    "<div class='logo'>PSITE <span>Mastery</span></div>"
-    "<div></div>"   # placeholder for future icons
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-# Sidebar navigation
-nav = {
-    "Dashboard": "dashboard",
-    "Score Topics": "topics",
-    "Make Quiz": "make_quiz",
-    "Learning Path": "learning_path",
-}
-for label, view in nav.items():
-    if st.sidebar.button(label, key=f"nav_{view}", use_container_width=True):
-        st.session_state.view = view
-        st.rerun()
-
-st.sidebar.markdown("<div class='sidebar-sep'></div>", unsafe_allow_html=True)
-
-if st.sidebar.button("Spaced Repetition", key="nav_sr", use_container_width=True):
-    ids = sr_due_ids(limit=50)
-    pool = ALL_Q[ALL_Q["id"].isin(ids)].reset_index(drop=True) if not ALL_Q.empty else ALL_Q
-    _start_quiz(pool, mode="spaced")
-
-st.sidebar.markdown("<div class='sidebar-sep'></div>", unsafe_allow_html=True)
-if st.sidebar.button("Logout", type="secondary", use_container_width=True):
-    clear_persisted_login()
-    st.rerun()
-
-# ---------- MAIN ----------
-st.markdown("<div class='main'>", unsafe_allow_html=True)
-
-# ------------------------------------------------------------------ #
-# 9. VIEW ROUTER
-# ------------------------------------------------------------------ #
-view = st.session_state.get("view", "dashboard")
-
-# ---------- DASHBOARD ----------
-if view == "dashboard":
-    st.markdown("<div class='section-title'>Overview</div>", unsafe_allow_html=True)
-    attempted_all = sum(v.get("total", 0) for v in PROGRESS.values())
-    total_all = sum(Q_COUNT.get(t, 0) for t in Q_COUNT)
-    pct_done = _pct(attempted_all, total_all)
-    pct_acc  = int(round(overall_accuracy() * 100))
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-              <div class="kpi-ring" style="--val:{pct_done};"><div>{pct_done}%</div></div>
-              <div style="display:flex;flex-direction:column;gap:2px;">
-                <div style="font-weight:600;font-size:.95rem;">Completed</div>
-                <div style="font-size:.82rem;color:#6b7280">{attempted_all} of {total_all}</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with c2:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-              <div class="kpi-ring" style="--val:{pct_acc};"><div>{pct_acc}%</div></div>
-              <div style="display:flex;flex-direction:column;gap:2px;">
-                <div style="font-weight:600;font-size:.95rem;">Accuracy</div>
-                <div style="font-size:.82rem;color:#6b7280">All attempts</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-# ---------- TOPICS ----------
-elif view == "topics":
-    st.markdown("<div class='section-title'>Score Topics</div>", unsafe_allow_html=True)
-
-    cats = get_category_map()
-    s1, s2 = st.columns([2, 1])
-    with s1:
-        q = st.text_input("Search topics", placeholder="Search…", label_visibility="collapsed").strip().lower()
-    with s2:
-        cat_names = ["All"] + list(cats.keys())
-        chosen_cat = st.selectbox("Category", cat_names, index=0, label_visibility="collapsed")
-
-    topics = []
-    for cat, arr in cats.items():
-        if chosen_cat != "All" and cat != chosen_cat:
-            continue
-        for t in arr:
-            if q and q not in t.lower():
-                continue
-            topics.append(t)
-
-    if not topics:
-        st.info("No topics match your filter.")
-    else:
-        cols = st.columns(3)
-        for i, t in enumerate(topics):
-            with cols[i % 3]:
-                _render_topic_card(t)
-
-# ---------- REVIEW ----------
-elif view == "review":
-    topic = st.session_state.get("active_topic")
-    if not topic:
-        st.info("Choose a topic from Score Topics.")
-    else:
-        st.markdown(f"<div class='section-title'>{topic}</div>", unsafe_allow_html=True)
-        p = resolve_review_path(topic)
-        if not p:
-            st.info("No review uploaded yet. Place a `.md` file in `data/reviews/` named with the topic slug.")
-        else:
-            with open(p, "r", encoding="utf-8") as f:
-                txt = f.read()
-            st.markdown(txt, unsafe_allow_html=True)
-
-        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-        if st.button("Quiz this topic ▶", use_container_width=True):
-            df = load_questions_for_subjects([topic])
-            st.session_state.quiz_pool = df.reset_index(drop=True)
-            st.session_state.quiz_idx = 0
-            st.session_state.quiz_answers = {}
-            st.session_state.quiz_revealed = set()
-            st.session_state.quiz_finished = False
-            st.session_state.quiz_mode = "normal"
-            st.session_state.view = "quiz"
-            st.rerun()
-
-# ---------- MAKE QUIZ ----------
-elif view == "make_quiz":
-    st.markdown("<div class='section-title'>Make a Quiz</div>", unsafe_allow_html=True)
-    topics = ["Any"] + get_topics()
-    pick = st.multiselect("Choose topics (or leave empty for Any):", topics, default=[])
-    n = st.number_input("Number of questions", 5, 100, 20, step=5)
-    if st.button("Start ▶", use_container_width=True):
-        if pick and "Any" in pick:
-            pick = []
-        df = load_questions_for_subjects(pick)
-        df = df.sample(n=min(len(df), int(n)), random_state=42).reset_index(drop=True) if not df.empty else df
-        st.session_state.quiz_pool = df
-        st.session_state.quiz_idx = 0
-        st.session_state.quiz_answers = {}
-        st.session_state.quiz_revealed = set()
-        st.session_state.quiz_finished = False
-        st.session_state.quiz_mode = "normal"
-        st.session_state.view = "quiz"
-        st.rerun()
-
-# ---------- LEARNING PATH ----------
-elif view == "learning_path":
-    st.markdown("<div class='section-title'>Learning Path</div>", unsafe_allow_html=True)
-    history = load_history()
-    completed_ids = {h['id'] for h in history if h['correct']}
-
-    for topic in ORDERED_TOPICS:
-        ids = sorted(ALL_Q[ALL_Q['subject'] == topic]['id'].tolist())
-        if not ids:
-            continue
-        st.markdown(f"### {topic}")
-        dots_html = []
-        for id in ids:
-            color = "green" if id in completed_ids else ""
-            dots_html.append(f"<span class='dot {color}' style='width:12px;height:12px;margin:0 4px;'></span>")
-        st.markdown("<div style='display:flex;flex-wrap:wrap;'>"+ "".join(dots_html) +"</div>", unsafe_allow_html=True)
-        if st.button("Start Quiz", key=f"lp_quiz_{topic}", use_container_width=True):
-            pool = ALL_Q[ALL_Q['subject'] == topic].sort_values('id').reset_index(drop=True)
-            _start_quiz(pool, mode="normal", topic=topic)
-        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-
-# ---------- QUIZ ----------
-elif view == "quiz":
-    pool: pd.DataFrame = st.session_state.get("quiz_pool")
-    if pool is None or pool.empty:
-        if st.session_state.get("quiz_mode") == "spaced":
-            st.success("✅ No spaced-repetition items due.")
-        else:
-            st.info("No questions found. Add `.md` files to `data/questions/`.")
-    else:
-        i = st.session_state.quiz_idx
-        row = pool.iloc[i]
-        pct = int(((i + 1) / len(pool)) * 100)
-        st.progress(pct/100)
-        suffix = f" • {row.get('subject','')}" if row.get('subject') else ""
-        st.caption(f"Question {i+1} of {len(pool)}{suffix}")
-
-        st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
-
-        letters = ["A","B","C","D","E"]
-        prev_choice = st.session_state.quiz_answers.get(row["id"])
-        default_idx = letters.index(prev_choice) if prev_choice in letters else 0
-        choice = st.radio(
-            "",
-            letters,
-            index=default_idx,
-            format_func=lambda L: row[L],
-            label_visibility="collapsed",
-            key=f"q_{row['id']}"
-        )
-        st.session_state.quiz_answers[row["id"]] = choice
-
-        c1, c2, c3, c4 = st.columns([1,2,2,1])
-        with c1:
-            if st.button("Reveal", key=f"rev_{i}"):
-                st.session_state.quiz_revealed.add(row["id"])
-        with c2:
-            if st.button("Previous", disabled=(i==0)):
-                st.session_state.quiz_idx = max(0, i-1); st.rerun()
-        with c3:
-            if st.button("Next", disabled=(i==len(pool)-1)):
-                st.session_state.quiz_idx = min(len(pool)-1, i+1); st.rerun()
-        with c4:
-            if st.button("Finish"):
-                st.session_state.quiz_finished = True
-
-        if row["id"] in st.session_state.quiz_revealed:
-            is_correct = (choice == row["correct"])
-            verdict_class = "verdict-ok" if is_correct else "verdict-err"
-            verdict_text = "Correct" if is_correct else "Incorrect"
-            st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
-            if str(row.get("explanation","")).strip():
-                st.markdown(row["explanation"], unsafe_allow_html=True)
-            _record_and_update(row, is_correct)
-
-        if st.session_state.quiz_finished:
-            idxed = pool.set_index("id")
-            scored_ids = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
-            correct_n = sum(1 for qid in scored_ids if idxed.loc[qid]["correct"] == st.session_state.quiz_answers[qid])
-            denom = len(scored_ids) if scored_ids else len(pool)
-            st.success(f"Score: {correct_n}/{denom}")
-
-st.markdown("</div>", unsafe_allow_html=True)   # .main
