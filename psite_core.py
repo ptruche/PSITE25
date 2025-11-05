@@ -324,7 +324,7 @@ TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
 SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
 
 def topic_to_slug(t): return TOPIC_TO_SLUG.get(t, slugify(t))
-def slug_to_topic(s): return SLUG_TO_TOPIC.get(s.lower())
+def slug_to_topic(s): return SLUG_TO_TOPIC.get(s)
 
 # ------------------------------------------------------------------ #
 # QUESTION LOADING (no UI, pure pandas)
@@ -343,7 +343,7 @@ def _parse_md(path: str) -> Optional[dict]:
         fm, body = m.group(1), m.group(2)
         meta = {k.strip(): v.strip() for ln in fm.splitlines() if ":" in ln for k, v in [ln.split(":", 1)]}
         stem, expl = EXPL_RE.split(body, 1) if EXPL_RE.search(body) else (body.strip(), "")
-        subject = meta.get("subject") or slug_to_topic(os.path.basename(os.path.dirname(path)))
+        subject = slug_to_topic(os.path.basename(os.path.dirname(path)))
         if not subject or subject not in ALL_TOPICS:
             return None
         return {
