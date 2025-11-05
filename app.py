@@ -364,7 +364,7 @@ elif view == "quiz":
     else:
         history = load_history()
 
-        # Question navigator
+        # Question navigator on right
         left, right = st.columns([4,1])
         with right:
             st.markdown("<div class='q-nav'>", unsafe_allow_html=True)
