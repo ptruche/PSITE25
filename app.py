@@ -92,7 +92,7 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 .dot.green {background:#22c55e; border-color:#22c55e;}
 .q-nav {background:var(--sidebar-bg); padding:1rem; border-left:1px solid var(--border); box-shadow:var(--shadow); position:sticky; top:56px; height:calc(100vh - 56px); overflow-y:auto; display:flex; flex-direction:column; align-items:center;}
 .q-nav-title {font-size:1rem; font-weight:600; margin-bottom:1rem;}
-.q-nav-btn {width:35px; height:35px; border-radius:50%; background:#e5e7eb; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:500; color:var(--text); transition:all 0.2s; margin-bottom:0.5rem;}
+.q-nav-btn {width:30px; height:30px; border-radius:50%; background:#e5e7eb; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:500; color:var(--text); transition:all 0.2s; margin-bottom:0.5rem; font-size:0.85rem;}
 .q-nav-btn.unanswered {background:#e5e7eb;}
 .q-nav-btn.correct {background:#22c55e; color:white;}
 .q-nav-btn.incorrect {background:#ef4444; color:white;}
@@ -364,85 +364,90 @@ elif view == "quiz":
     else:
         history = load_history()
 
-        # Question navigator on right
-        left, right = st.columns([9,1])
-        with right:
-            st.markdown("<div class='q-nav'>", unsafe_allow_html=True)
-            st.markdown("<div class='q-nav-title'>Questions</div>", unsafe_allow_html=True)
-            for j in range(len(pool)):
-                qid = pool.iloc[j]["id"]
-                status = st.session_state.quiz_status.get(qid, None)
-                btn_class = "q-nav-btn"
-                if status is not None:
-                    btn_class += " correct" if status else " incorrect"
-                else:
-                    btn_class += " unanswered"
-                label = str(j+1)
-                if status is not None:
-                    label = "✅ " + label if status else "❌ " + label
-                if st.button(label, key=f"nav_q_{j}", use_container_width=True):
-                    st.session_state.quiz_idx = j
-                    st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Quiz</div>", unsafe_allow_html=True)
 
-        with left:
-            i = st.session_state.quiz_idx
-            row = pool.iloc[i]
-            pct = int(((i + 1) / len(pool)) * 100)
-            st.progress(pct/100)
-            suffix = f" • {row.get('subject','')}" if row.get('subject') else ""
-            st.caption(f"Question {i+1} of {len(pool)}{suffix}")
+        # Main quiz content on left
+        st.markdown("<div style='width:80%; float:left; padding-right:1rem;'>", unsafe_allow_html=True)
+        i = st.session_state.quiz_idx
+        row = pool.iloc[i]
+        pct = int(((i + 1) / len(pool)) * 100)
+        st.progress(pct/100)
+        suffix = f" • {row.get('subject','')}" if row.get('subject') else ""
+        st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
-            # Last attempt time
-            q_attempts = [h for h in history if h["id"] == row["id"]]
-            if q_attempts:
-                last_ts = max(h["ts"] for h in q_attempts)
-                last_date = datetime.datetime.fromtimestamp(last_ts).strftime("%Y-%m-%d %H:%M:%S")
-                st.markdown(f"<div class='last-attempt'>Last attempted: {last_date}</div>", unsafe_allow_html=True)
+        # Last attempt time
+        q_attempts = [h for h in history if h["id"] == row["id"]]
+        if q_attempts:
+            last_ts = max(h["ts"] for h in q_attempts)
+            last_date = datetime.datetime.fromtimestamp(last_ts).strftime("%Y-%m-%d %H:%M:%S")
+            st.markdown(f"<div class='last-attempt'>Last attempted: {last_date}</div>", unsafe_allow_html=True)
 
-            st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
-            letters = ["A","B","C","D","E"]
-            prev_choice = st.session_state.quiz_answers.get(row["id"])
-            default_idx = letters.index(prev_choice) if prev_choice in letters else 0
-            choice = st.radio(
-                "",
-                letters,
-                index=default_idx,
-                format_func=lambda L: row[L],
-                label_visibility="collapsed",
-                key=f"q_{row['id']}"
-            )
-            st.session_state.quiz_answers[row["id"]] = choice
+        letters = ["A","B","C","D","E"]
+        prev_choice = st.session_state.quiz_answers.get(row["id"])
+        default_idx = letters.index(prev_choice) if prev_choice in letters else 0
+        choice = st.radio(
+            "",
+            letters,
+            index=default_idx,
+            format_func=lambda L: row[L],
+            label_visibility="collapsed",
+            key=f"q_{row['id']}"
+        )
+        st.session_state.quiz_answers[row["id"]] = choice
 
-            c1, c2, c3, c4 = st.columns([1,2,2,1])
-            with c1:
-                if st.button("Reveal", key=f"rev_{i}"):
-                    st.session_state.quiz_revealed.add(row["id"])
-            with c2:
-                if st.button("Previous", disabled=(i==0)):
-                    st.session_state.quiz_idx = max(0, i-1); st.rerun()
-            with c3:
-                if st.button("Next", disabled=(i==len(pool)-1)):
-                    st.session_state.quiz_idx = min(len(pool)-1, i+1); st.rerun()
-            with c4:
-                if st.button("Finish"):
-                    st.session_state.quiz_finished = True
+        c1, c2, c3, c4 = st.columns([1,2,2,1])
+        with c1:
+            if st.button("Reveal", key=f"rev_{i}"):
+                st.session_state.quiz_revealed.add(row["id"])
+        with c2:
+            if st.button("Previous", disabled=(i==0)):
+                st.session_state.quiz_idx = max(0, i-1); st.rerun()
+        with c3:
+            if st.button("Next", disabled=(i==len(pool)-1)):
+                st.session_state.quiz_idx = min(len(pool)-1, i+1); st.rerun()
+        with c4:
+            if st.button("Finish"):
+                st.session_state.quiz_finished = True
 
-            if row["id"] in st.session_state.quiz_revealed:
-                is_correct = (choice == row["correct"])
-                verdict_class = "verdict-ok" if is_correct else "verdict-err"
-                verdict_text = "Correct" if is_correct else "Incorrect"
-                st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
-                if str(row.get("explanation","")).strip():
-                    st.markdown(row["explanation"], unsafe_allow_html=True)
-                _record_and_update(row, is_correct)
+        if row["id"] in st.session_state.quiz_revealed:
+            is_correct = (choice == row["correct"])
+            verdict_class = "verdict-ok" if is_correct else "verdict-err"
+            verdict_text = "Correct" if is_correct else "Incorrect"
+            st.markdown(f"<span class='verdict {verdict_class}'>{verdict_text}</span>", unsafe_allow_html=True)
+            if str(row.get("explanation","")).strip():
+                st.markdown(row["explanation"], unsafe_allow_html=True)
+            _record_and_update(row, is_correct)
 
-            if st.session_state.quiz_finished:
-                idxed = pool.set_index("id")
-                scored_ids = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
-                correct_n = sum(1 for qid in scored_ids if idxed.loc[qid]["correct"] == st.session_state.quiz_answers[qid])
-                denom = len(scored_ids) if scored_ids else len(pool)
-                st.success(f"Score: {correct_n}/{denom}")
+        if st.session_state.quiz_finished:
+            idxed = pool.set_index("id")
+            scored_ids = [qid for qid in st.session_state.quiz_answers if qid in st.session_state.quiz_revealed]
+            correct_n = sum(1 for qid in scored_ids if idxed.loc[qid]["correct"] == st.session_state.quiz_answers[qid])
+            denom = len(scored_ids) if scored_ids else len(pool)
+            st.success(f"Score: {correct_n}/{denom}")
+
+        st.markdown("</div>", unsafe_allow_html=True)  # Close left div
+
+        # Navigator on right
+        st.markdown("<div class='q-nav' style='width:20%; float:right; background:var(--sidebar-bg); padding:1rem; border-left:1px solid var(--border); box-shadow:var(--shadow); position:sticky; top:56px; height:calc(100vh - 56px); overflow-y:auto;'>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title' style='font-size:1rem; margin-bottom:1rem;'>Questions</div>", unsafe_allow_html=True)
+        st.markdown("<div style='display:flex; flex-direction:column; gap:0.5rem;'>", unsafe_allow_html=True)
+        for j in range(len(pool)):
+            qid = pool.iloc[j]["id"]
+            status = st.session_state.quiz_status.get(qid, None)
+            btn_class = "q-nav-btn"
+            if status is not None:
+                btn_class += " correct" if status else " incorrect"
+            else:
+                btn_class += " unanswered"
+            label = str(j+1)
+            if st.button(label, key=f"nav_q_{j}", use_container_width=True):
+                st.session_state.quiz_idx = j
+                st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)  # Close q-nav div
+
+        st.markdown("<div style='clear:both;'></div>", unsafe_allow_html=True)  # Clear float
 
 st.markdown("</div>", unsafe_allow_html=True)   # .main
