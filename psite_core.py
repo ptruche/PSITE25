@@ -347,7 +347,7 @@ def _parse_md(path: str) -> Optional[dict]:
         if not subject or subject not in ALL_TOPICS:
             return None
         return {
-            "id": meta.get("id", "").strip(),
+            "id": meta.get("id", "").strip() or os.path.splitext(os.path.basename(path))[0],
             "subject": subject,
             "stem": stem.strip(),
             "explanation": expl.strip(),
