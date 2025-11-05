@@ -204,6 +204,7 @@ nav = {
     "Dashboard": "dashboard",
     "Score Topics": "topics",
     "Make Quiz": "make_quiz",
+    "Learning Path": "learning_path",
 }
 for label, view in nav.items():
     if st.sidebar.button(label, key=f"nav_{view}", use_container_width=True):
@@ -342,6 +343,27 @@ elif view == "make_quiz":
         st.session_state.view = "quiz"
         st.rerun()
 
+# ---------- LEARNING PATH ----------
+elif view == "learning_path":
+    st.markdown("<div class='section-title'>Learning Path</div>", unsafe_allow_html=True)
+    history = load_history()
+    completed_ids = {h['id'] for h in history if h['correct']}
+
+    for topic in ORDERED_TOPICS:
+        ids = sorted(ALL_Q[ALL_Q['subject'] == topic]['id'].tolist())
+        if not ids:
+            continue
+        st.markdown(f"### {topic}")
+        dots_html = []
+        for id in ids:
+            color = "green" if id in completed_ids else ""
+            dots_html.append(f"<span class='dot {color}' style='width:12px;height:12px;margin:0 4px;'></span>")
+        st.markdown("<div style='display:flex;flex-wrap:wrap;'>"+ "".join(dots_html) +"</div>", unsafe_allow_html=True)
+        if st.button("Start Quiz", key=f"lp_quiz_{topic}", use_container_width=True):
+            pool = ALL_Q[ALL_Q['subject'] == topic].sort_values('id').reset_index(drop=True)
+            _start_quiz(pool, mode="normal", topic=topic)
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+
 # ---------- QUIZ ----------
 elif view == "quiz":
     pool: pd.DataFrame = st.session_state.get("quiz_pool")
@@ -355,7 +377,7 @@ elif view == "quiz":
         row = pool.iloc[i]
         pct = int(((i + 1) / len(pool)) * 100)
         st.progress(pct/100)
-        suffix = f" • {row.get('subject','')}" if row.get("subject") else ""
+        suffix = f" • {row.get('subject','')}" if row.get('subject') else ""
         st.caption(f"Question {i+1} of {len(pool)}{suffix}")
 
         st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
