@@ -1,13 +1,14 @@
 # app.py
 import streamlit as st
 import pandas as pd
+import datetime
 from psite_core import (
     apply_base_theme, ensure_session_keys, try_auto_login_persisted,
     auth_is_authed, auth_login_form, clear_persisted_login,
     get_category_map, get_topics, resolve_review_path,
     load_questions_frame, questions_count_by_topic, record_attempt,
     overall_accuracy, sr_due_ids, sr_update, load_progress,
-    topic_to_slug, get_review_word_count, load_history, ORDERED_TOPICS
+    topic_to_slug, get_review_word_count, load_history
 )
 
 # ------------------------------------------------------------------ #
@@ -89,6 +90,13 @@ html, body, [data-testid="stAppViewContainer"] {background:var(--bg); color:var(
 .divider {height:1px; background:var(--border); margin:1rem 0;}
 .dot {width:9px; height:9px; border-radius:50%; background:#d1d5db; display:inline-block; margin-right:6px; border:1px solid #cbd5e1; transform:translateY(1px);}
 .dot.green {background:#22c55e; border-color:#22c55e;}
+.q-nav {display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;}
+.q-nav-btn {width:40px; height:40px; border-radius:50%; background:#e5e7eb; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:500; color:var(--text); transition:all 0.2s;}
+.q-nav-btn.unanswered {background:#e5e7eb;}
+.q-nav-btn.correct {background:#22c55e; color:white;}
+.q-nav-btn.incorrect {background:#ef4444; color:white;}
+.q-nav-btn:hover {transform:scale(1.1);}
+.last-attempt {font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;}
 </style>
 """,
     unsafe_allow_html=True,
@@ -172,6 +180,7 @@ def _start_quiz(df: pd.DataFrame, mode: str = "normal", topic: str | None = None
     st.session_state.quiz_mode = mode
     st.session_state.active_topic = topic
     st.session_state.view = "quiz"
+    st.session_state.quiz_status = {}  # To track correct/wrong per qid
     st.rerun()
 
 def _record_and_update(row: pd.Series, correct: bool):
@@ -181,6 +190,7 @@ def _record_and_update(row: pd.Series, correct: bool):
         if st.session_state.get("quiz_mode") == "spaced":
             sr_update(row["id"], correct)
         st.session_state[key] = True
+    st.session_state.quiz_status[row["id"]] = correct
 
 # ------------------------------------------------------------------ #
 # 7. PRE-COMPUTE counts & progress (once per session)
@@ -204,7 +214,6 @@ nav = {
     "Dashboard": "dashboard",
     "Score Topics": "topics",
     "Make Quiz": "make_quiz",
-    "Learning Path": "learning_path",
 }
 for label, view in nav.items():
     if st.sidebar.button(label, key=f"nav_{view}", use_container_width=True):
@@ -343,27 +352,6 @@ elif view == "make_quiz":
         st.session_state.view = "quiz"
         st.rerun()
 
-# ---------- LEARNING PATH ----------
-elif view == "learning_path":
-    st.markdown("<div class='section-title'>Learning Path</div>", unsafe_allow_html=True)
-    history = load_history()
-    completed_ids = {h['id'] for h in history if h['correct']}
-
-    for topic in ORDERED_TOPICS:
-        ids = sorted(ALL_Q[ALL_Q['subject'] == topic]['id'].tolist())
-        if not ids:
-            continue
-        st.markdown(f"### {topic}")
-        dots_html = []
-        for id in ids:
-            color = "green" if id in completed_ids else ""
-            dots_html.append(f"<span class='dot {color}' style='width:12px;height:12px;margin:0 4px;'></span>")
-        st.markdown("<div style='display:flex;flex-wrap:wrap;'>"+ "".join(dots_html) +"</div>", unsafe_allow_html=True)
-        if st.button("Start Quiz", key=f"lp_quiz_{topic}", use_container_width=True):
-            pool = ALL_Q[ALL_Q['subject'] == topic].sort_values('id').reset_index(drop=True)
-            _start_quiz(pool, mode="normal", topic=topic)
-        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-
 # ---------- QUIZ ----------
 elif view == "quiz":
     pool: pd.DataFrame = st.session_state.get("quiz_pool")
@@ -373,12 +361,37 @@ elif view == "quiz":
         else:
             st.info("No questions found. Add `.md` files to `data/questions/`.")
     else:
+        history = load_history()
+
+        # Question navigator
+        with st.expander("Question Navigator", expanded=True):
+            nav_cols = st.columns(10)
+            for j in range(len(pool)):
+                qid = pool.iloc[j]["id"]
+                status = st.session_state.quiz_status.get(qid, None)
+                btn_class = "q-nav-btn"
+                if status is not None:
+                    btn_class += " correct" if status else " incorrect"
+                else:
+                    btn_class += " unanswered"
+                with nav_cols[j % 10]:
+                    if st.button(str(j+1), key=f"nav_q_{j}", use_container_width=True):
+                        st.session_state.quiz_idx = j
+                        st.rerun()
+
         i = st.session_state.quiz_idx
         row = pool.iloc[i]
         pct = int(((i + 1) / len(pool)) * 100)
         st.progress(pct/100)
         suffix = f" • {row.get('subject','')}" if row.get('subject') else ""
         st.caption(f"Question {i+1} of {len(pool)}{suffix}")
+
+        # Last attempt time
+        q_attempts = [h for h in history if h["id"] == row["id"]]
+        if q_attempts:
+            last_ts = max(h["ts"] for h in q_attempts)
+            last_date = datetime.datetime.fromtimestamp(last_ts).strftime("%Y-%m-%d %H:%M:%S")
+            st.markdown(f"<div class='last-attempt'>Last attempted: {last_date}</div>", unsafe_allow_html=True)
 
         st.markdown(f"<div class='q-prompt'>{row['stem']}</div>", unsafe_allow_html=True)
 
