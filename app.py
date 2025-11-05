@@ -7,7 +7,7 @@ from psite_core import (
     get_category_map, get_topics, resolve_review_path,
     load_questions_frame, questions_count_by_topic, record_attempt,
     overall_accuracy, sr_due_ids, sr_update, load_progress,
-    topic_to_slug, get_review_word_count, load_history,
+    topic_to_slug, get_review_word_count, load_history, ORDERED_TOPICS
 )
 
 # ------------------------------------------------------------------ #
