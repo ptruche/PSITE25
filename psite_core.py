@@ -331,68 +331,43 @@ def slug_to_topic(s): return SLUG_TO_TOPIC.get(s)
 # ------------------------------------------------------------------ #
 FRONT_RE = re.compile(r"^---\s*([\s\S]*?)\s*---\s*([\s\S]*)$", re.M)
 EXPL_RE  = re.compile(r"<!--\s*EXPLANATION\s*-->", re.I)
-
-def _infer_subject_from_path(path: str) -> Optional[str]:
-    parent = os.path.basename(os.path.dirname(path)).lower()
-    return SLUG_TO_TOPIC.get(parent)
-
-def normalize_subject(meta_subject: str, path: str) -> Optional[str]:
-    topics = set(get_topics())
-    if meta_subject and meta_subject in topics:
-        return meta_subject
-    if meta_subject:
-        s = slugify(meta_subject)
-        if s in SLUG_TO_TOPIC:
-            return SLUG_TO_TOPIC[s]
-    return _infer_subject_from_path(path)
+REQUIRED_COLS  = ["id","subject","A","B","C","D","E","correct","stem","explanation"]
 
 def _parse_md(path: str) -> Optional[dict]:
     try:
-        with open(path, "r", encoding="utf-8") as h:
-            raw = h.read()
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read()
         m = FRONT_RE.match(raw)
-        if not m: return None
-        fm, body = m.group(1), m.group(2)
-        meta = {}
-        for ln in fm.splitlines():
-            if ":" in ln:
-                k, v = ln.split(":", 1)
-                meta[k.strip()] = v.strip()
-
-        subject = normalize_subject((meta.get("subject","") or "").strip(), path)
-        if not subject:  # skip if still unknown
+        if not m:
             return None
-
-        stem, explanation = EXPL_SPLIT_RE.split(body, maxsplit=1) if EXPL_SPLIT_RE in body else (body.strip(), "")
-
-        rec = {
-            "id": meta.get("id","").strip(),
+        fm, body = m.group(1), m.group(2)
+        meta = {k.strip(): v.strip() for ln in fm.splitlines() if ":" in ln for k, v in [ln.split(":", 1)]}
+        stem, expl = EXPL_RE.split(body, 1) if EXPL_RE.search(body) else (body.strip(), "")
+        subject = meta.get("subject") or slug_to_topic(os.path.basename(os.path.dirname(path)))
+        if not subject or subject not in ALL_TOPICS:
+            return None
+        return {
+            "id": meta.get("id", "").strip(),
             "subject": subject,
-            "A": meta.get("A","").strip(),
-            "B": meta.get("B","").strip(),
-            "C": meta.get("C","").strip(),
-            "D": meta.get("D","").strip(),
-            "E": meta.get("E","").strip(),
-            "correct": meta.get("correct","").strip().upper(),
-            "stem": stem, "explanation": explanation,
+            "stem": stem.strip(),
+            "explanation": expl.strip(),
+            "A": meta.get("A", "").strip(),
+            "B": meta.get("B", "").strip(),
+            "C": meta.get("C", "").strip(),
+            "D": meta.get("D", "").strip(),
+            "E": meta.get("E", "").strip(),
+            "correct": meta.get("correct", "").strip().upper(),
         }
-        if rec["id"] and rec["correct"] and rec["stem"] and rec["subject"]:
-            return rec
     except Exception:
         return None
 
 def load_questions_frame() -> pd.DataFrame:
-    files = sorted(glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True))
-    rows = [rec for f in files if (rec := _parse_md(f))]
+    rows = [r for p in glob.glob(os.path.join(QUESTIONS_DIR, "**", "*.md"), recursive=True) if (r := _parse_md(p))]
     if not rows:
         return pd.DataFrame(columns=REQUIRED_COLS)
     df = pd.DataFrame(rows)
-    for c in REQUIRED_COLS:
-        if c not in df.columns: df[c] = ""
-        df[c] = df[c].astype(str).str.strip()
-    df["correct"] = df["correct"].str.upper()
-    df = df[df["subject"].isin(get_topics())].copy()
-    return df.drop_duplicates(subset=["id"], keep="first").reset_index(drop=True)
+    df = df[df["id"] != ""].drop_duplicates(subset="id").reset_index(drop=True)
+    return df
 
 # ------------------------------------------------------------------ #
 # REVIEW HELPERS
