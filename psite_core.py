@@ -324,7 +324,7 @@ TOPIC_TO_SLUG = {t: slugify(t) for t in ALL_TOPICS}
 SLUG_TO_TOPIC = {v: k for k, v in TOPIC_TO_SLUG.items()}
 
 def topic_to_slug(t): return TOPIC_TO_SLUG.get(t, slugify(t))
-def slug_to_topic(s): return SLUG_TO_TOPIC.get(s)
+def slug_to_topic(s): return SLUG_TO_TOPIC.get(s.lower())
 
 # ------------------------------------------------------------------ #
 # QUESTION LOADING (no UI, pure pandas)
